@@ -70,13 +70,13 @@ function injectOverlay() {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "12px",
+    gap: "8px",
     // question box.PNG frames the whole panel now, not individual tiles —
     // stretched to fill since it's meant to work as a resizable frame.
     backgroundImage: `url(${numberAssetUrl(ANSWER_BOX_FILE)})`,
     backgroundSize: "100% 100%",
     backgroundRepeat: "no-repeat",
-    padding: "16px",
+    padding: "10px 16px",
     overflow: "auto",
     pointerEvents: "auto",
   });
@@ -84,9 +84,15 @@ function injectOverlay() {
 }
 
 const OVERLAY_WIDTH = 380;
-const OVERLAY_HEIGHT = 240;
 const OVERLAY_GAP_ABOVE_COMPOSER = 16;
 
+// Height hugs the actual content instead of a fixed value — a fixed
+// height generous enough for the memory game's grid left the shorter
+// multiplication game centered inside a lot of empty vertical space.
+// Called every frame (see overlayPositionLoop), so even though this runs
+// once before the game content is injected (see showOverlay) and
+// measures a stale/empty height that first frame, it self-corrects
+// within a frame or two once the content's actually there.
 function positionOverlay() {
   const el = document.getElementById("water-overlay");
   const composer = findComposer();
@@ -95,9 +101,9 @@ function positionOverlay() {
   if (!rect) return;
   const width = Math.min(OVERLAY_WIDTH, rect.width);
   el.style.width = `${width}px`;
-  el.style.height = `${OVERLAY_HEIGHT}px`;
   el.style.left = `${rect.left + (rect.width - width) / 2}px`;
-  el.style.top = `${rect.top - OVERLAY_HEIGHT - OVERLAY_GAP_ABOVE_COMPOSER}px`;
+  const height = el.offsetHeight || 120;
+  el.style.top = `${rect.top - height - OVERLAY_GAP_ABOVE_COMPOSER}px`;
 }
 
 let overlayPositionLoopActive = false;

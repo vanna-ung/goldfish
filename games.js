@@ -1,20 +1,29 @@
-// "Earn a prompt back" minigames — shown once the daily cap (plus any
-// earned bonus) is used up. Kept in its own file for the same reason as
-// aquarium.js: shares content.js's execution context (currentState,
-// findComposer, anchorRectFor, extensionEnabled, updateBucket) without
-// message passing or changes to the already-working core.
+// "Earn a prompt back" minigames + composer blocking, shown once the
+// daily cap (plus any earned bonus) is used up. Kept in its own file for
+// the same reason as aquarium.js: shares content.js's execution context
+// (currentState, findComposer, anchorRectFor, extensionEnabled,
+// updateBucket) and aquarium.js's (findChatMain, spawnSwimmer, spawnBubble,
+// AQUARIUM_FISH_FILES) without message passing or changes to either
+// already-working file.
 //
-// The panel floats in the gap above the composer — between the end of the
-// conversation and the top of the prompt box — rather than covering the
-// composer itself. Stretching it to match the composer's exact box (an
-// earlier version of this) visually broke the real input underneath it,
-// which isn't what this is for. It still calls composer.blur() once when
-// it appears as a mild nudge, but this isn't a hard block on typing/
-// sending — a content script can't truly intercept claude.ai's own submit
-// handling, only sit near it.
+// Two-part system:
+// 1. A persistent, invisible blocker sits exactly over the composer
+//    whenever capped — pointer-events:auto, so clicks/focus can't reach
+//    the real composer or send button underneath. This is the actual
+//    block; a content script still can't truly intercept claude.ai's own
+//    submit handling, only physically cover it, but full DOM coverage is
+//    enough to stop clicking or typing in.
+// 2. A full aquarium-scene backdrop (reusing aquarium.js's fish/bubble
+//    spawning against its own container) covers the whole chat area with
+//    the game panel centered on top — fish/bubbles visibly cross behind
+//    the panel since it's a separate, higher z-index element. The user
+//    can exit this back to the composer-blocker-only state via the X on
+//    the panel, but the composer stays blocked either way; clicking the
+//    blocker re-summons the full backdrop+panel.
 
 const GAMES = ["multiplication", "memory"];
-let activeGame = null; // "multiplication" | "memory" | null while the overlay is up
+let activeGame = null; // "multiplication" | "memory" | null while the panel has content
+let gameOverlayDismissed = false; // true = user hit the X; composer stays blocked regardless
 
 function gamesIsEnabled() {
   return typeof extensionEnabled === "undefined" || extensionEnabled;
@@ -22,6 +31,10 @@ function gamesIsEnabled() {
 
 function isCurrentlyCapped() {
   return typeof currentState !== "undefined" && !!currentState && currentState.capped;
+}
+
+function gamesChatMain() {
+  return typeof findChatMain === "function" ? findChatMain() : null;
 }
 
 // ---- Styles ----
@@ -53,11 +66,132 @@ function injectGameStyles() {
     #water-overlay input[type="number"]::-webkit-inner-spin-button {
       -webkit-appearance: none; margin: 0;
     }
+    #water-overlay-exit {
+      position: absolute; top: 10px; right: 16px; width: 24px; height: 24px;
+      border-radius: 50%; border: none; background: rgba(74,144,217,0.15);
+      color: #2a5f8f; font-size: 14px; line-height: 1; cursor: pointer;
+    }
   `;
   document.head.appendChild(style);
 }
 
-// ---- Overlay shell ----
+// ---- Composer blocker (persistent while capped, regardless of whether
+// the full backdrop+panel is currently shown or dismissed) ----
+
+function injectComposerBlocker() {
+  if (document.getElementById("water-composer-blocker")) return;
+  const el = document.createElement("div");
+  el.id = "water-composer-blocker";
+  Object.assign(el.style, {
+    position: "fixed",
+    zIndex: "49",
+    display: "none",
+    cursor: "pointer",
+    pointerEvents: "auto",
+    background: "transparent",
+  });
+  el.addEventListener("click", () => {
+    gameOverlayDismissed = false;
+    refreshCappedUI();
+  });
+  document.body.appendChild(el);
+}
+
+function positionComposerBlocker() {
+  const el = document.getElementById("water-composer-blocker");
+  const composer = findComposer();
+  if (!el || !composer) return;
+  const rect = anchorRectFor(composer);
+  if (!rect) return;
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.top}px`;
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+}
+
+let blockerPositionLoopActive = false;
+function blockerPositionLoop() {
+  if (!blockerPositionLoopActive) return;
+  positionComposerBlocker();
+  requestAnimationFrame(blockerPositionLoop);
+}
+function startBlockerPositionLoop() {
+  if (blockerPositionLoopActive) return;
+  blockerPositionLoopActive = true;
+  requestAnimationFrame(blockerPositionLoop);
+}
+function stopBlockerPositionLoop() {
+  blockerPositionLoopActive = false;
+}
+
+// ---- Aquarium-scene backdrop ----
+// Reuses aquarium.js's spawnSwimmer()/spawnBubble(), which both accept an
+// explicit container as of this feature — same fish/bubble art and
+// movement, just spawned into this backdrop instead of the aquarium's own
+// water div.
+
+function injectBackdrop() {
+  if (document.getElementById("water-big-overlay")) return;
+  const el = document.createElement("div");
+  el.id = "water-big-overlay";
+  Object.assign(el.style, {
+    position: "fixed",
+    zIndex: "48",
+    display: "none",
+    overflow: "hidden",
+    pointerEvents: "auto",
+    background: "linear-gradient(180deg, #7ec8f2 0%, #4a90d9 100%)",
+  });
+  document.body.appendChild(el);
+}
+
+function positionBackdrop() {
+  const el = document.getElementById("water-big-overlay");
+  const main = gamesChatMain();
+  if (!el || !main) return;
+  const rect = main.getBoundingClientRect();
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.top}px`;
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+}
+
+const BACKDROP_FISH_TARGET = 4;
+const BACKDROP_BUBBLE_TARGET = 4;
+
+function maintainBackdropCreatures() {
+  const el = document.getElementById("water-big-overlay");
+  if (!el || el.style.display === "none") return;
+  if (typeof spawnSwimmer !== "function" || typeof spawnBubble !== "function") return;
+
+  const fishFiles = typeof AQUARIUM_FISH_FILES !== "undefined" ? AQUARIUM_FISH_FILES : ["fish1.PNG"];
+  const currentFish = el.querySelectorAll('[data-aquarium-fish="true"]').length;
+  for (let i = currentFish; i < BACKDROP_FISH_TARGET; i++) {
+    spawnSwimmer({ files: fishFiles, dataAttr: "aquariumFish", sizeRange: [40, 70], topRange: [10, 75], container: el });
+  }
+  const currentBubbles = el.querySelectorAll('[data-aquarium-bubble="true"]').length;
+  for (let i = currentBubbles; i < BACKDROP_BUBBLE_TARGET; i++) {
+    spawnBubble(el);
+  }
+}
+
+let backdropPositionLoopActive = false;
+function backdropPositionLoop() {
+  if (!backdropPositionLoopActive) return;
+  positionBackdrop();
+  requestAnimationFrame(backdropPositionLoop);
+}
+function startBackdropPositionLoop() {
+  if (backdropPositionLoopActive) return;
+  backdropPositionLoopActive = true;
+  requestAnimationFrame(backdropPositionLoop);
+}
+function stopBackdropPositionLoop() {
+  backdropPositionLoopActive = false;
+}
+
+// ---- Game panel — centered over the backdrop, fish/bubbles cross behind
+// it since it's a separate, higher z-index element ----
 
 function injectOverlay() {
   if (document.getElementById("water-overlay")) return;
@@ -67,12 +201,8 @@ function injectOverlay() {
     position: "fixed",
     zIndex: "50",
     display: "none",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    // question box.PNG frames the whole panel now, not individual tiles —
-    // stretched to fill since it's meant to work as a resizable frame.
+    // question box.PNG frames the whole panel, stretched to fill since
+    // it's meant to work as a resizable frame.
     backgroundImage: `url(${numberAssetUrl(ANSWER_BOX_FILE)})`,
     backgroundSize: "100% 100%",
     backgroundRepeat: "no-repeat",
@@ -80,30 +210,53 @@ function injectOverlay() {
     overflow: "auto",
     pointerEvents: "auto",
   });
+
+  // Separate content container, not `el` itself — startXGame() below sets
+  // innerHTML wholesale each time, which would otherwise wipe the exit
+  // button out along with the old game's markup.
+  const content = document.createElement("div");
+  content.id = "water-overlay-content";
+  Object.assign(content.style, {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    width: "100%",
+  });
+  el.appendChild(content);
+
+  const exitBtn = document.createElement("button");
+  exitBtn.id = "water-overlay-exit";
+  exitBtn.textContent = "✕";
+  exitBtn.setAttribute("aria-label", "Close");
+  exitBtn.addEventListener("click", () => {
+    gameOverlayDismissed = true;
+    refreshCappedUI();
+  });
+  el.appendChild(exitBtn);
+
   document.body.appendChild(el);
 }
 
 const OVERLAY_WIDTH = 380;
-const OVERLAY_GAP_ABOVE_COMPOSER = 16;
 
-// Height hugs the actual content instead of a fixed value — a fixed
-// height generous enough for the memory game's grid left the shorter
-// multiplication game centered inside a lot of empty vertical space.
-// Called every frame (see overlayPositionLoop), so even though this runs
-// once before the game content is injected (see showOverlay) and
-// measures a stale/empty height that first frame, it self-corrects
-// within a frame or two once the content's actually there.
+// Centered within the chat area (main's box), not anchored to the
+// composer — "the question in the middle" of the aquarium scene, not a
+// popover pinned to the prompt box. Height hugs the actual content
+// instead of a fixed value (see the note in the previous version of this
+// function) so the panel doesn't sit inside a lot of empty space for the
+// shorter multiplication game.
 function positionOverlay() {
   const el = document.getElementById("water-overlay");
-  const composer = findComposer();
-  if (!el || !composer) return;
-  const rect = anchorRectFor(composer);
-  if (!rect) return;
-  const width = Math.min(OVERLAY_WIDTH, rect.width);
+  const main = gamesChatMain();
+  if (!el || !main) return;
+  const rect = main.getBoundingClientRect();
+  const width = Math.min(OVERLAY_WIDTH, rect.width - 32);
   el.style.width = `${width}px`;
-  el.style.left = `${rect.left + (rect.width - width) / 2}px`;
   const height = el.offsetHeight || 120;
-  el.style.top = `${rect.top - height - OVERLAY_GAP_ABOVE_COMPOSER}px`;
+  el.style.left = `${rect.left + (rect.width - width) / 2}px`;
+  el.style.top = `${rect.top + (rect.height - height) / 2}px`;
 }
 
 let overlayPositionLoopActive = false;
@@ -121,38 +274,91 @@ function stopOverlayPositionLoop() {
   overlayPositionLoopActive = false;
 }
 
-function showOverlay() {
+// ---- Orchestration ----
+
+function showBackdropAndPanel() {
+  injectBackdrop();
   injectOverlay();
-  const el = document.getElementById("water-overlay");
-  el.style.display = "flex";
+  injectComposerBlocker();
+
+  const backdrop = document.getElementById("water-big-overlay");
+  const panel = document.getElementById("water-overlay");
+  const blocker = document.getElementById("water-composer-blocker");
+  if (backdrop) backdrop.style.display = "block";
+  if (panel) panel.style.display = "block";
+  if (blocker) blocker.style.display = "none";
+
+  stopBlockerPositionLoop();
+  positionBackdrop();
   positionOverlay();
+  startBackdropPositionLoop();
   startOverlayPositionLoop();
 
   const composer = findComposer();
   if (composer && document.activeElement === composer) composer.blur();
 
-  if (!activeGame) {
+  const content = document.getElementById("water-overlay-content");
+  if (!activeGame && content) {
     activeGame = GAMES[Math.floor(Math.random() * GAMES.length)];
-    if (activeGame === "multiplication") startMultiplicationGame(el);
-    else startMemoryGame(el);
+    if (activeGame === "multiplication") startMultiplicationGame(content);
+    else startMemoryGame(content);
   }
 }
 
-function hideOverlay() {
-  const el = document.getElementById("water-overlay");
-  if (el) {
-    el.style.display = "none";
-    el.innerHTML = "";
-  }
-  activeGame = null;
+function showBlockerOnly() {
+  injectComposerBlocker();
+
+  const backdrop = document.getElementById("water-big-overlay");
+  const panel = document.getElementById("water-overlay");
+  const blocker = document.getElementById("water-composer-blocker");
+  if (backdrop) backdrop.style.display = "none";
+  if (panel) panel.style.display = "none";
+  if (blocker) blocker.style.display = "block";
+
+  stopBackdropPositionLoop();
   stopOverlayPositionLoop();
+  positionComposerBlocker();
+  startBlockerPositionLoop();
+}
+
+function hideEverything() {
+  const backdrop = document.getElementById("water-big-overlay");
+  const panel = document.getElementById("water-overlay");
+  const blocker = document.getElementById("water-composer-blocker");
+  if (backdrop) backdrop.style.display = "none";
+  if (panel) panel.style.display = "none";
+  if (blocker) blocker.style.display = "none";
+  const content = document.getElementById("water-overlay-content");
+  if (content) content.innerHTML = "";
+  activeGame = null;
+  stopBackdropPositionLoop();
+  stopOverlayPositionLoop();
+  stopBlockerPositionLoop();
+}
+
+function refreshCappedUI() {
+  if (!gamesIsEnabled()) {
+    hideEverything();
+    return;
+  }
+  if (!isCurrentlyCapped()) {
+    hideEverything();
+    gameOverlayDismissed = false; // reset for the next time it's hit
+    return;
+  }
+  if (gameOverlayDismissed) {
+    showBlockerOnly();
+  } else {
+    showBackdropAndPanel();
+  }
 }
 
 function earnPromptAndClose() {
   chrome.runtime.sendMessage({ type: "EARN_PROMPT" }, (state) => {
     if (chrome.runtime.lastError) return;
     if (state && typeof updateBucket === "function") updateBucket(state);
-    hideOverlay();
+    gameOverlayDismissed = false;
+    hideEverything();
   });
 }
 
@@ -163,8 +369,9 @@ function earnPromptAndClose() {
 // sprites; the answer itself is a plain number input for reliability.
 
 // "question box.PNG" is the visual for the ANSWER slot specifically (the
-// blank you fill in) — not a frame around every problem digit. Problem
-// digits/operators render as plain glyphs, no per-tile box.
+// blank you fill in) and, larger, the frame for the whole panel — not a
+// frame around every problem digit. Problem digits/operators render as
+// plain glyphs, no per-tile box.
 const NUMBER_ASSET_FILES = {
   "0": "0.PNG", "1": "1.PNG", "2": "2.PNG", "3": "3.PNG", "4": "4.PNG",
   "5": "5.PNG", "6": "6.PNG", "7": "7.PNG", "8": "8.PNG", "9": "9.PNG",
@@ -199,20 +406,19 @@ function startMultiplicationGame(root) {
   let n1, n2;
 
   root.innerHTML = `
-    <div style="font-size:13px;color:#2a5f8f;">Solve 10 to earn a prompt (<span id="mg-progress">1</span>/${TOTAL_QUESTIONS})</div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="font-size:13px;color:#2a5f8f;text-align:center;">Solve 10 to earn a prompt (<span id="mg-progress">1</span>/${TOTAL_QUESTIONS})</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;">
       <div id="mg-problem" style="display:flex;gap:4px;align-items:center;"></div>
       <input id="mg-answer" type="number" inputmode="numeric" />
       <button id="mg-submit" class="primary">Check</button>
     </div>
-    <div id="mg-feedback" style="font-size:12px;color:#888;min-height:16px;"></div>
+    <div id="mg-feedback" style="font-size:12px;color:#888;min-height:16px;text-align:center;"></div>
   `;
 
   const problemEl = root.querySelector("#mg-problem");
   const progressEl = root.querySelector("#mg-progress");
   const answerEl = root.querySelector("#mg-answer");
   const feedbackEl = root.querySelector("#mg-feedback");
-  answerEl.style.backgroundImage = `url(${numberAssetUrl(ANSWER_BOX_FILE)})`;
 
   function nextQuestion() {
     n1 = 2 + Math.floor(Math.random() * 11); // 2-12
@@ -260,10 +466,10 @@ function startMemoryGame(root) {
   let revealing = true;
 
   root.innerHTML = `
-    <div style="font-size:13px;color:#2a5f8f;">Remember which tiles have the fish</div>
+    <div style="font-size:13px;color:#2a5f8f;text-align:center;">Remember which tiles have the fish</div>
     <div id="mem-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
     <button id="mem-submit" class="primary" disabled>Check</button>
-    <div id="mem-feedback" style="font-size:12px;color:#888;min-height:16px;"></div>
+    <div id="mem-feedback" style="font-size:12px;color:#888;min-height:16px;text-align:center;"></div>
   `;
 
   const gridEl = root.querySelector("#mem-grid");
@@ -326,17 +532,15 @@ function startMemoryGame(root) {
   startRound();
 }
 
-// ---- Drive the overlay off the same state content.js already tracks ----
+// ---- Drive everything off the same state content.js/aquarium.js track ----
 
 injectGameStyles();
 
 setInterval(() => {
-  if (!gamesIsEnabled()) {
-    hideOverlay();
-    return;
-  }
-  if (isCurrentlyCapped()) showOverlay();
-  else hideOverlay();
+  refreshCappedUI();
+  maintainBackdropCreatures();
 }, 500);
+
+refreshCappedUI();
 
 console.log("[games] injected");

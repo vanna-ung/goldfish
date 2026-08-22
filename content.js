@@ -70,15 +70,15 @@ const SASS_PHASES = {
 // Fish-out-of-water reaction, keyed by typing-length phase — gets more
 // flabbergasted the longer the pending prompt is. This is the ONLY thing
 // that reads prompt size; the fishbowl never does. Real art has started
-// landing (assets/fish/fish_reaction.jpg, drawn as the phase-5 reaction)
+// landing (assets/fish/fish_reaction.png, drawn as the phase-5 reaction)
 // but only that one file exists so far — used for all 5 phases as an
 // interim placeholder until the teammate finishes the rest.
 const REACTION_PHASE_IMAGE_FILES = {
-  1: "fish_reaction.jpg",
-  2: "fish_reaction.jpg",
-  3: "fish_reaction.jpg",
-  4: "fish_reaction.jpg",
-  5: "fish_reaction.jpg",
+  1: "fish_reaction.png",
+  2: "fish_reaction.png",
+  3: "fish_reaction.png",
+  4: "fish_reaction.png",
+  5: "fish_reaction.png",
 };
 
 function reactionAssetUrl(file) {

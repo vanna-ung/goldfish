@@ -24,6 +24,17 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // drained by one big prompt"). Numbers are top-of-water as a % of main's
 // own height, not the viewport.
 const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
+// claude.ai renders its own sticky-header fade above main's content
+// (measured live: ~72px). It composites against whatever's actually
+// painted behind it, not against main's CSS background property — so on
+// established chats water starts this many px lower than its phase
+// would otherwise put it, letting the fade blend into the plain
+// unmodified background above it exactly like it always did. Not
+// applied to new chats (no title/history there to fade behind, and
+// water should read as genuinely flush with the top) or via a covering
+// overlay (that approach clipped glass's rounded corners and broke the
+// text-behind-glass look — see the reverted injectHeaderPatch()).
+const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -43,6 +54,12 @@ function aquariumPhase() {
   // `lastPhase` lives in content.js; 0 there means "no composer yet", but
   // the aquarium should still show something reasonable, so floor at 1.
   return typeof lastPhase === "number" && lastPhase > 0 ? lastPhase : 1;
+}
+
+// Shared by water and glass — both need the same phase-based top, offset
+// down on established chats only (see AQUARIUM_ESTABLISHED_TOP_OFFSET_PX).
+function aquariumTopFor(percent) {
+  return isEstablishedChat() ? `calc(${percent}% + ${AQUARIUM_ESTABLISHED_TOP_OFFSET_PX}px)` : `${percent}%`;
 }
 
 function aquariumIsEnabled() {
@@ -215,7 +232,7 @@ function injectAquarium() {
   glass.id = "aquarium-glass";
   Object.assign(glass.style, {
     position: "absolute",
-    top: `${AQUARIUM_WATER_TOP_BY_PHASE[1]}%`, // aligned with phase-1 water's own level
+    top: "0", // real value set live by positionGlassPanel() once shown — see below
     bottom: "0",
     display: "none", // positionGlassPanel() turns this on for established chats
     borderRadius: "28px",
@@ -242,7 +259,7 @@ function injectAquarium() {
   water.style.transition = "top 1800ms ease";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0}%`;
+      water.style.top = aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0);
       setTimeout(() => {
         water.style.transition = "top 800ms ease"; // back to the normal speed for later phase changes
       }, 1800);
@@ -330,7 +347,7 @@ function maintainDisclaimerGlass() {
 function updateAquariumWaterLevel() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
-  water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0}%`;
+  water.style.top = aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0);
 }
 
 // Glass is only shown on established chats — a blank new chat has no
@@ -356,6 +373,7 @@ function positionGlassPanel() {
 
   const layerRect = layer.getBoundingClientRect();
   glass.style.display = "block";
+  glass.style.top = aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[1]); // aligned with phase-1 water's own level
   glass.style.left = `${rect.left - layerRect.left}px`;
   glass.style.width = `${rect.width}px`;
   // Stops at the composer's own bottom edge rather than main's — the

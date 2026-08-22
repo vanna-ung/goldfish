@@ -22,12 +22,31 @@ const CONFIG = {
 
 const ATTACHMENT_SELECTOR = '[data-testid="file-thumbnail"]';
 
+// Sass comment box shape — matches claude.ai's own modestly-rounded
+// composer. (The original, unstyled-by-adapter values — kept here
+// explicitly now that a second platform needs its own.)
+const SASS_BORDER_RADIUS = "8px";
+const SASS_PADDING = "6px 10px";
+
+// Gap/offset baselines — unchanged from content.js's original values,
+// kept here explicitly now that a second platform needs its own.
+const READOUT_GAP_BELOW_COMPOSER = 12;
+const FISH_TOP_OFFSET = 8;
+
+// claude.ai's sticky-header fade, measured live (see AQUARIUM_ESTABLISHED_TOP_OFFSET_PX in aquarium.js).
+const HEADER_HEIGHT_PX = 72;
+
 // Scoping: verified live that claude.ai renders the sidebar and the chat
 // area as SEPARATE elements — <aside class="dframe-sidebar"> sits on top
 // (z-index 20) of <main class="dframe-content">, which spans the full
 // width underneath it.
 const SIDEBAR_SELECTOR = "aside.dframe-sidebar";
 const CHAT_MAIN_SELECTOR = "main.dframe-content";
+
+function sidebarRightEdge() {
+  const sidebar = document.querySelector(SIDEBAR_SELECTOR);
+  return sidebar ? sidebar.getBoundingClientRect().right : 0;
+}
 
 // A NEW chat has the composer centered on the page, no ancestor uses
 // sticky positioning. An ESTABLISHED chat docks the composer to the

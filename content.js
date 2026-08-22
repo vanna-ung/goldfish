@@ -168,7 +168,12 @@ function injectBucket() {
   document.body.appendChild(readout);
 }
 
-const BUCKET_GAP_BELOW_COMPOSER = 12;
+// Overridable per platform (READOUT_GAP_BELOW_COMPOSER) — different
+// sites' composers resolve to different stable-anchor heights/shapes
+// (see findStableAnchor below), so a gap tuned for one can read as too
+// far from another's.
+const BUCKET_GAP_BELOW_COMPOSER =
+  typeof READOUT_GAP_BELOW_COMPOSER !== "undefined" ? READOUT_GAP_BELOW_COMPOSER : 12;
 
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
@@ -181,9 +186,11 @@ function positionBucket() {
   // a sidebar occupying real screen space, so the equivalent gap is
   // bounded by the SIDEBAR's right edge, not the viewport's raw left
   // edge (0) — using 0 would place this on top of/inside the sidebar
-  // whenever it's open.
-  const sidebar = document.querySelector(SIDEBAR_SELECTOR);
-  const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
+  // whenever it's open. sidebarRightEdge() is the platform adapter's
+  // call — some sites (ChatGPT) render the sidebar as more than one
+  // element depending on expand/collapse state, which a single selector
+  // can't capture correctly.
+  const leftBoundary = typeof sidebarRightEdge === "function" ? sidebarRightEdge() : 0;
   const gapCenter = (leftBoundary + composerRect.left) / 2;
   const width = container.offsetWidth || 160;
 
@@ -405,14 +412,19 @@ function injectSass() {
   if (document.getElementById("water-sass")) return;
   const el = document.createElement("div");
   el.id = "water-sass";
+  // Shape/padding come from the platform adapter — matching each site's
+  // own composer shape (claude.ai's modest rounded rect vs ChatGPT's
+  // near-pill) reads as belonging to the page instead of pasted on.
+  // Falls back to claude.ai's original values if an adapter doesn't
+  // define them.
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
     background: "#d97757",
     color: "#fff",
     fontFamily: "system-ui, sans-serif",
-    padding: "6px 10px",
-    borderRadius: "8px",
+    padding: typeof SASS_PADDING !== "undefined" ? SASS_PADDING : "6px 10px",
+    borderRadius: typeof SASS_BORDER_RADIUS !== "undefined" ? SASS_BORDER_RADIUS : "8px",
     maxWidth: "280px",
     boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
     display: "none",
@@ -430,7 +442,10 @@ function injectSass() {
 const REACTION_IMAGE_TOP_OFFSET = {
   "reaction2.PNG": -60,
 };
-const DEFAULT_REACTION_TOP_OFFSET = 8;
+// Overridable per platform (FISH_TOP_OFFSET) for the same reason as
+// BUCKET_GAP_BELOW_COMPOSER above — this is the baseline every entry in
+// REACTION_IMAGE_TOP_OFFSET is relative to.
+const DEFAULT_REACTION_TOP_OFFSET = typeof FISH_TOP_OFFSET !== "undefined" ? FISH_TOP_OFFSET : 8;
 
 function positionFish(composerRect) {
   const el = document.getElementById("water-fish");

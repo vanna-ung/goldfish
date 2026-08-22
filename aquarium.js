@@ -31,7 +31,10 @@ const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 // water should read as genuinely flush with the top) or via a covering
 // overlay (that approach clipped glass's rounded corners and broke the
 // text-behind-glass look — see the reverted injectHeaderPatch()).
-const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
+// Overridable per platform (HEADER_HEIGHT_PX) — each site's sticky
+// header is a different height (claude.ai's ~72px vs ChatGPT's own
+// --header-height CSS variable, verified live at 52px).
+const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = typeof HEADER_HEIGHT_PX !== "undefined" ? HEADER_HEIGHT_PX : 72;
 // Glass sits this many px below wherever water's own top lands, so the
 // two lines don't sit exactly flush.
 const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;

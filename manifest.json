@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Water Tracker",
+  "name": "Goldfish",
   "version": "0.1.0",
   "description": "Tracks the water cost of your AI prompts.",
   "permissions": ["storage", "alarms"],

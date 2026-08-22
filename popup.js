@@ -2,7 +2,7 @@ const toggle = document.getElementById("enabled-toggle");
 const status = document.getElementById("status");
 
 function renderStatus(enabled) {
-  status.textContent = enabled ? "Tracking active" : "Tracking paused";
+  status.textContent = enabled ? "On" : "Off";
 }
 
 chrome.storage.sync.get("enabled", ({ enabled }) => {

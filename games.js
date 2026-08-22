@@ -383,6 +383,12 @@ function showBlockerOnly() {
 
 function restoreFishSass() {
   if (typeof updatePhaseUI !== "function") return;
+  // Guards against resurrecting the fish/sass elements after the user
+  // turns tracking off — content.js's teardownAll() removes them, but
+  // this function is also reached from refreshCappedUI()'s own interval
+  // (via hideEverything()), which runs independently of that toggle and
+  // would otherwise recreate them the next time it ticks.
+  if (typeof extensionEnabled !== "undefined" && !extensionEnabled) return;
   const composer = findComposer();
   const len = typeof effectiveTypingLength === "function" ? effectiveTypingLength(composer) : 0;
   updatePhaseUI(len, composer);

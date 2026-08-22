@@ -20,15 +20,17 @@ const CONFIG = {
 //    length. Drives the sass comment + fish art placeholder. Entirely
 //    client-side — no backend round-trip, since it never persists.
 
-const BUCKET_TOP = 20;
-const BUCKET_HEIGHT = 120;
-
 // The fishbowl is purely a "prompts remaining" gauge — one drawing per
-// remaining count (10 prompts/day default = 11 fishbowls, 0 through 10).
-// It never looks at what's being typed; that's the fish-reaction's job
-// below. Swap renderFishbowlStage()'s body for an
-// <img src="assets/fishbowl/remaining-N.png"> once the teammate's set is
-// ready — `remaining` is already the only input it needs.
+// remaining count. It never looks at what's being typed; that's the
+// fish-reaction's job below. Real art: assets/fishbowl/0.PNG..10.PNG, one
+// per exact remaining count (not scaled to the cap — if the cap is ever
+// raised past 10 in settings, remaining is clamped to the 0-10 art range).
+const FISHBOWL_MAX_INDEX = 10;
+
+function fishbowlImageUrl(remaining) {
+  const index = Math.max(0, Math.min(FISHBOWL_MAX_INDEX, Math.round(remaining)));
+  return chrome.runtime.getURL(`assets/fishbowl/${index}.PNG`);
+}
 
 // Phase boundaries are intentionally short (100 chars/phase) for demo
 // purposes, not tuned to real prompt-length distributions.
@@ -107,15 +109,7 @@ function injectBucket() {
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <svg viewBox="0 0 100 150" width="70" height="105">
-      <defs>
-        <clipPath id="water-clip">
-          <rect x="5" y="${BUCKET_TOP}" width="90" height="${BUCKET_HEIGHT}" />
-        </clipPath>
-      </defs>
-      <rect x="5" y="${BUCKET_TOP}" width="90" height="${BUCKET_HEIGHT}" rx="8" fill="none" stroke="#4a90d9" stroke-width="3" />
-      <rect id="water-fill" x="5" y="${BUCKET_TOP}" width="90" height="${BUCKET_HEIGHT}" rx="8" fill="#4a90d9" clip-path="url(#water-clip)" />
-    </svg>
+    <img id="water-fill-img" width="80" height="80" style="display: block;" alt="fishbowl" />
     <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
   `;
   Object.assign(container.style, {
@@ -132,17 +126,11 @@ function injectBucket() {
   document.body.appendChild(container);
 }
 
-// Placeholder renderer — stands in for one-image-per-remaining-count until
-// the teammate's fishbowl set lands. Snaps directly to `remaining`, no
-// smoothing, since the real version will be a discrete image swap, not an
-// animated fill.
-function renderFishbowlStage(remaining, cap) {
-  const waterFill = document.getElementById("water-fill");
-  if (!waterFill) return;
-  const fraction = cap > 0 ? Math.max(0, Math.min(1, remaining / cap)) : 0;
-  const filledHeight = BUCKET_HEIGHT * fraction;
-  waterFill.setAttribute("y", BUCKET_TOP + (BUCKET_HEIGHT - filledHeight));
-  waterFill.setAttribute("height", filledHeight);
+function renderFishbowlStage(remaining) {
+  const img = document.getElementById("water-fill-img");
+  if (!img) return;
+  const url = fishbowlImageUrl(remaining);
+  if (img.src !== url) img.src = url; // avoid re-triggering a load on every call
 }
 
 function updateBucket(state) {
@@ -151,7 +139,7 @@ function updateBucket(state) {
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
-  renderFishbowlStage(state.remaining, state.cap);
+  renderFishbowlStage(state.remaining);
   readout.innerHTML = state.capped
     ? "Bucket empty — earn another prompt"
     : `<strong>${state.remaining}</strong> prompts left`;

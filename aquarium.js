@@ -226,14 +226,14 @@ function injectAquarium() {
     bottom: "0",
     display: "none", // positionGlassPanel() turns this on for established chats
     borderRadius: "28px",
-    // Apple "Liquid Glass" approximation: blur + a much lighter
-    // saturation boost than before — 180% was amplifying the blue water
-    // showing through the blur enough that the panel read as tinted blue
-    // rather than clear. Higher white opacity for the same reason: it
-    // needs to actually neutralize the blue behind it, not just blur it.
-    backdropFilter: "blur(28px) saturate(110%)",
-    WebkitBackdropFilter: "blur(28px) saturate(110%)",
-    background: "rgba(255,255,255,0.5)",
+    // Apple "Liquid Glass" approximation: strong blur + saturation boost
+    // (the saturate() is what keeps colors underneath from looking washed
+    // out/gray through the blur), a soft white tint, an inset highlight
+    // along the top/left edge to read as a lit glass rim, and a diffuse
+    // shadow to lift it off the water rather than looking painted on.
+    backdropFilter: "blur(24px) saturate(180%)",
+    WebkitBackdropFilter: "blur(24px) saturate(180%)",
+    background: "rgba(255,255,255,0.22)",
     boxShadow:
       "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
     pointerEvents: "none",
@@ -326,9 +326,9 @@ function maintainDisclaimerGlass() {
     display: "inline-block",
     padding: "4px 14px",
     borderRadius: "9999px",
-    backdropFilter: "blur(28px) saturate(110%)",
-    WebkitBackdropFilter: "blur(28px) saturate(110%)",
-    background: "rgba(255,255,255,0.5)",
+    backdropFilter: "blur(24px) saturate(180%)",
+    WebkitBackdropFilter: "blur(24px) saturate(180%)",
+    background: "rgba(255,255,255,0.22)",
     boxShadow:
       "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 4px 16px rgba(20,60,90,0.12)",
   });

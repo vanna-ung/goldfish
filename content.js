@@ -350,7 +350,7 @@ function updateBucket(state) {
 
   readout.innerHTML = state.capped
     ? "Play the game to get another prompt!"
-    : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
+    : `<strong>${state.remaining}</strong>/${state.cap} prompts left today`;
 
   const stage = usageStageFor(state.totalPromptsSent);
   setUsageStage(stage);

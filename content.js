@@ -152,7 +152,7 @@ function injectBucket() {
   document.body.appendChild(container);
 }
 
-const MAX_BUCKET_HEIGHT = 200;
+const BUCKET_GAP_BELOW_COMPOSER = 12;
 
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
@@ -161,38 +161,16 @@ function positionBucket() {
   const composerRect = anchorRectFor(composer);
   if (!composerRect) return;
 
-  // Mirror of positionFish() below — that one centers in the gap to the
-  // RIGHT of the composer (composer's right edge to the viewport's right
-  // edge). On the left there's a sidebar occupying real screen space, so
-  // the equivalent gap is bounded by the SIDEBAR's right edge, not the
-  // viewport's raw left edge (0) — using 0 would place this on top of/
-  // inside the sidebar whenever it's open.
-  const sidebar = document.querySelector("aside.dframe-sidebar");
-  const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
-  const gapCenter = (leftBoundary + composerRect.left) / 2;
-  const width = container.offsetWidth || 130;
-
-  // Vertical span matches the sass comment's top (it straddles half above
-  // the composer's own top edge — see positionSass) down to the
-  // composer's bottom edge, rather than a fixed-size box — same formula
-  // positionSass() itself uses, computed independently here since sass
-  // can be hidden (display:none has offsetHeight 0) while this widget is
-  // always visible.
-  const sass = document.getElementById("water-sass");
-  const sassHeight = sass && sass.offsetHeight > 0 ? sass.offsetHeight : 24;
-  const top = composerRect.top - sassHeight / 2;
-  // Capped rather than always spanning to composerRect.bottom — in an
-  // established chat the composer's own box grows taller as the user
-  // types multi-line text (top edge moves up, sass tracks it, so this
-  // widget's top would climb too), and letting height follow that meant
-  // the fishbowl visibly stretched taller along with the prompt box.
-  // Capping at roughly its size for a normal, non-expanded composer keeps
-  // it fixed regardless of how tall typing makes the composer.
-  const height = Math.min(composerRect.bottom - top, MAX_BUCKET_HEIGHT);
-
-  container.style.top = `${top}px`;
-  container.style.left = `${gapCenter - width / 2}px`;
-  container.style.height = `${height}px`;
+  // Below the composer, left-aligned with its own left edge — same in
+  // both a new chat (composer centered) and an established one (docked
+  // bottom), since it's always relative to composerRect regardless of
+  // where that rect currently sits on screen. Height is the widget's own
+  // natural size now (image + text), no longer artificially spanned/
+  // capped — that was only needed for the earlier beside-the-composer
+  // layout, which this replaces.
+  container.style.top = `${composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER}px`;
+  container.style.left = `${composerRect.left}px`;
+  container.style.height = "";
 }
 
 let bucketPositionLoopActive = false;

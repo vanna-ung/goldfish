@@ -141,8 +141,6 @@ function injectBucket() {
     position: "fixed",
     // top/left/height set live by positionBucket() — see below
     zIndex: 50,
-    background: "#fcfcfb",
-    borderRadius: "12px",
     padding: "8px",
     display: "flex",
     flexDirection: "column",

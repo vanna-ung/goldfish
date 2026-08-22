@@ -4,12 +4,27 @@
   "version": "0.1.0",
   "description": "A mindful companion for your AI habit. Prompt less, think more.",
   "permissions": ["storage", "alarms"],
-  "host_permissions": ["https://claude.ai/*"],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*"
+  ],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["content.js", "aquarium.js", "games.js"],
+      "js": ["platform-claude.js", "content.js", "aquarium.js", "games.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["platform-chatgpt.js", "content.js", "aquarium.js", "games.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["platform-gemini.js", "content.js", "aquarium.js", "games.js"],
       "run_at": "document_idle"
     }
   ],
@@ -17,7 +32,12 @@
   "web_accessible_resources": [
     {
       "resources": ["assets/fish/*", "assets/numbers/*", "assets/aquarium/*", "assets/usage/*"],
-      "matches": ["https://claude.ai/*"]
+      "matches": [
+        "https://claude.ai/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
+      ]
     }
   ]
 }

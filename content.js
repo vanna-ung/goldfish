@@ -1,16 +1,9 @@
-// Runs inside claude.ai. Detects sent prompts, renders the fishbowl, and
-// drives the length-based sass comment + fish art while the user types.
-//
-// Verified against the live claude.ai DOM (2026-08-21). Both are
-// data-testid attributes rather than aria-label text, which is more
-// resilient to copy/label changes than the guessed selectors this started
-// with — the previous aria-label guess ("Send Message") didn't match the
-// real one ("Send message", lowercase m), which is why sends weren't
-// being counted.
-const CONFIG = {
-  composerSelector: '[data-testid="chat-input"]',
-  sendButtonSelector: '[data-testid="chat-input-send"]',
-};
+// Detects sent prompts, renders the fishbowl, and drives the
+// length-based sass comment + fish art while the user types. Platform-
+// agnostic: CONFIG, ATTACHMENT_SELECTOR, etc. come from the platform
+// adapter (platform-claude.js today), loaded before this file — see that
+// file's own header for why they're plain shared globals rather than
+// something passed in explicitly.
 
 // ---- Two independent systems ----
 //
@@ -29,14 +22,14 @@ const CONFIG = {
 // purposes, not tuned to real prompt-length distributions.
 const PHASE_BOUNDS = [100, 200, 300, 400, 500];
 
-// Verified live: an uploaded file (or a paste large enough that claude.ai
-// converts it into a "PASTED" card) renders as a chip OUTSIDE the
-// composer's contenteditable — composer.innerText doesn't grow at all
-// when a file is attached, so without this, attaching a 50k-character PDF
-// registers as phase 1. Each attachment gets a flat weight added to the
-// effective length instead of trying to read the file's actual size.
-// 500 chars = an instant phase-5 hit, matching "lecture slides are huge."
-const ATTACHMENT_SELECTOR = '[data-testid="file-thumbnail"]';
+// An uploaded file (or a paste large enough that the site converts it
+// into a "PASTED" card) renders as a chip OUTSIDE the composer's
+// contenteditable on claude.ai — composer.innerText doesn't grow at all
+// when a file is attached (ATTACHMENT_SELECTOR, from the platform
+// adapter), so without this, attaching a 50k-character PDF registers as
+// phase 1. Each attachment gets a flat weight added to the effective
+// length instead of trying to read the file's actual size. 500 chars =
+// an instant phase-5 hit, matching "lecture slides are huge."
 const ATTACHMENT_LENGTH_WEIGHT = 500;
 
 function attachmentCount() {
@@ -112,10 +105,8 @@ let extensionEnabled = true;
 // Stage 0 = nothing sent, ever. Stage 1 = right after the very first
 // prompt. Stages 2-8 each need two MORE prompts past the previous stage
 // (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 total sent). Stage 8 is
-// terminal — stays there and shows the ml-used note instead of climbing
-// further.
+// terminal — stays there rather than climbing further.
 const USAGE_MAX_STAGE = 8;
-const ML_PER_PROMPT_DISPLAY = 25; // placeholder estimate, tune whenever
 
 function usageStageFor(totalPromptsSent) {
   const total = totalPromptsSent || 0;
@@ -145,10 +136,6 @@ function injectBucket() {
   container.innerHTML = `
     <div id="water-usage-wrap" style="position: relative; width: 160px; height: 160px;">
       <img id="water-usage-img" width="160" height="160" style="display: block; transition: opacity 250ms ease;" alt="water usage" />
-      <div id="water-usage-cap-note" style="display: none; position: absolute; top: 4px; left: 0; right: 0; text-align: center; background: rgba(255,255,255,0.85); border-radius: 6px; padding: 2px 4px;">
-        <span id="water-usage-cap-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
-        <span style="font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">ml used</span>
-      </div>
     </div>
   `;
   Object.assign(container.style, {
@@ -175,7 +162,12 @@ function injectBucket() {
   document.body.appendChild(readout);
 }
 
-const BUCKET_GAP_BELOW_COMPOSER = 12;
+// Overridable per platform (READOUT_GAP_BELOW_COMPOSER) — different
+// sites' composers resolve to different stable-anchor heights/shapes
+// (see findStableAnchor below), so a gap tuned for one can read as too
+// far from another's.
+const BUCKET_GAP_BELOW_COMPOSER =
+  typeof READOUT_GAP_BELOW_COMPOSER !== "undefined" ? READOUT_GAP_BELOW_COMPOSER : 12;
 
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
@@ -188,9 +180,11 @@ function positionBucket() {
   // a sidebar occupying real screen space, so the equivalent gap is
   // bounded by the SIDEBAR's right edge, not the viewport's raw left
   // edge (0) — using 0 would place this on top of/inside the sidebar
-  // whenever it's open.
-  const sidebar = document.querySelector("aside.dframe-sidebar");
-  const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
+  // whenever it's open. sidebarRightEdge() is the platform adapter's
+  // call — some sites (ChatGPT) render the sidebar as more than one
+  // element depending on expand/collapse state, which a single selector
+  // can't capture correctly.
+  const leftBoundary = typeof sidebarRightEdge === "function" ? sidebarRightEdge() : 0;
   const gapCenter = (leftBoundary + composerRect.left) / 2;
   const width = container.offsetWidth || 160;
 
@@ -229,6 +223,23 @@ function setReadoutGameMode(on) {
   }
 }
 
+// Some platforms (ChatGPT's "+" attach menu, and similar popovers near
+// the composer) can open directly over the readout or sass comment —
+// FILE_MENU_SELECTOR is an optional platform-adapter constant so this
+// is a no-op wherever it isn't defined (claude.ai has no such menu).
+function getOpenFileMenuRect() {
+  if (typeof FILE_MENU_SELECTOR === "undefined") return null;
+  const menu = document.querySelector(FILE_MENU_SELECTOR);
+  if (!menu) return null;
+  const rect = menu.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null; // present but not actually open/visible
+  return rect;
+}
+
+function rectsOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 function positionReadout() {
   if (readoutGameMode) return; // games.js positions it above the game panel instead
   const readout = document.getElementById("water-readout");
@@ -241,8 +252,23 @@ function positionReadout() {
   // both a new chat (composer centered) and an established one (docked
   // bottom), since it's always relative to composerRect regardless of
   // where that rect currently sits on screen.
-  readout.style.top = `${composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER}px`;
-  readout.style.left = `${composerRect.left}px`;
+  const left = composerRect.left;
+  let top = composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
+
+  // If an open file menu would sit on top of that natural position,
+  // drop below the menu instead of behind it — whichever direction the
+  // menu opened (it can flip above/below the composer depending on
+  // available room).
+  const menuRect = getOpenFileMenuRect();
+  if (menuRect) {
+    const naturalRect = { left, right: left + readout.offsetWidth, top, bottom: top + readout.offsetHeight };
+    if (rectsOverlap(menuRect, naturalRect)) {
+      top = menuRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
+    }
+  }
+
+  readout.style.top = `${top}px`;
+  readout.style.left = `${left}px`;
 }
 
 let bucketPositionLoopActive = false;
@@ -296,12 +322,6 @@ function renderDigitSprites(container, number, size) {
     });
 }
 
-function renderMlUsedDigits(totalPromptsSent) {
-  const digitsEl = document.getElementById("water-usage-cap-digits");
-  if (!digitsEl) return;
-  renderDigitSprites(digitsEl, (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY, 10);
-}
-
 // ---- Usage tracker (underneath the fishbowl) ----
 // Separate metric from both the daily prompt cap and the lifetime usage
 // fishbowl above, though it shares that fishbowl's "ever, everywhere"
@@ -348,21 +368,14 @@ function updateBucket(state) {
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
+  // Denominator is the configured daily cap alone (baseCap), not
+  // state.cap (which includes any earned bonus) — a bonus prompt should
+  // still read as "x/10", not inflate the denominator to "x/12".
   readout.innerHTML = state.capped
     ? "Play the game to get another prompt!"
-    : `<strong>${state.remaining}</strong>/${state.cap} prompts left today`;
+    : `<strong>${state.remaining}</strong>/${state.baseCap ?? state.cap} prompts left today`;
 
-  const stage = usageStageFor(state.totalPromptsSent);
-  setUsageStage(stage);
-  const capNote = document.getElementById("water-usage-cap-note");
-  if (capNote) {
-    if (stage >= USAGE_MAX_STAGE) {
-      renderMlUsedDigits(state.totalPromptsSent);
-      capNote.style.display = "block";
-    } else {
-      capNote.style.display = "none";
-    }
-  }
+  setUsageStage(usageStageFor(state.totalPromptsSent));
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.
@@ -412,14 +425,19 @@ function injectSass() {
   if (document.getElementById("water-sass")) return;
   const el = document.createElement("div");
   el.id = "water-sass";
+  // Shape/padding come from the platform adapter — matching each site's
+  // own composer shape (claude.ai's modest rounded rect vs ChatGPT's
+  // near-pill) reads as belonging to the page instead of pasted on.
+  // Falls back to claude.ai's original values if an adapter doesn't
+  // define them.
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
     background: "#d97757",
     color: "#fff",
     fontFamily: "system-ui, sans-serif",
-    padding: "6px 10px",
-    borderRadius: "8px",
+    padding: typeof SASS_PADDING !== "undefined" ? SASS_PADDING : "6px 10px",
+    borderRadius: typeof SASS_BORDER_RADIUS !== "undefined" ? SASS_BORDER_RADIUS : "8px",
     maxWidth: "280px",
     boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
     display: "none",
@@ -437,7 +455,10 @@ function injectSass() {
 const REACTION_IMAGE_TOP_OFFSET = {
   "reaction2.PNG": -60,
 };
-const DEFAULT_REACTION_TOP_OFFSET = 8;
+// Overridable per platform (FISH_TOP_OFFSET) for the same reason as
+// BUCKET_GAP_BELOW_COMPOSER above — this is the baseline every entry in
+// REACTION_IMAGE_TOP_OFFSET is relative to.
+const DEFAULT_REACTION_TOP_OFFSET = typeof FISH_TOP_OFFSET !== "undefined" ? FISH_TOP_OFFSET : 8;
 
 function positionFish(composerRect) {
   const el = document.getElementById("water-fish");
@@ -463,6 +484,14 @@ function positionSass(composerRect) {
   // gets deleted: the comment rides the top edge down with it, no separate
   // handling needed for that case.
   el.style.top = `${composerRect.top - el.offsetHeight / 2}px`;
+
+  // Unlike the readout, there's no good spot to relocate the comment to
+  // once a file menu is covering the composer's top edge — hide it
+  // instead. visibility (not display) so this stays independent of
+  // updatePhaseUI()'s own display:block/none, which tracks whether
+  // there's a comment to show at all, not this menu-conflict case.
+  const menuRect = getOpenFileMenuRect();
+  el.style.visibility = menuRect && rectsOverlap(menuRect, el.getBoundingClientRect()) ? "hidden" : "";
 }
 
 // The composer's own contenteditable node grows unbounded and sits inside
@@ -690,6 +719,35 @@ function schedulePreview(composer) {
   }, 150);
 }
 
+// ---- Typing speed (read by aquarium.js's pickFishSpeedRange — "the
+// faster you type, the faster the fish start to swim") ----
+// Smoothed (exponential moving average) chars/sec between keystrokes,
+// not the raw instantaneous gap — one slow key in a fast burst
+// shouldn't read as "typing slowed down." Gaps over 2s are treated as a
+// pause rather than slow typing and don't feed the average at all.
+let typingCharsPerSec = 0;
+let lastKeystrokeAt = 0;
+
+function recordKeystroke() {
+  const now = Date.now();
+  if (lastKeystrokeAt > 0) {
+    const dt = (now - lastKeystrokeAt) / 1000;
+    if (dt > 0 && dt < 2) {
+      typingCharsPerSec = typingCharsPerSec * 0.7 + (1 / dt) * 0.3;
+    }
+  }
+  lastKeystrokeAt = now;
+}
+
+// Snaps back to 0 within a second of the last keystroke, not just
+// between two keystrokes — so fish visibly return to normal speed
+// shortly after typing stops, rather than staying boosted from a burst
+// that already ended.
+function currentTypingSpeed() {
+  if (lastKeystrokeAt === 0 || Date.now() - lastKeystrokeAt > 1000) return 0;
+  return typingCharsPerSec;
+}
+
 document.addEventListener("keydown", (e) => {
   if (!extensionEnabled) return;
   if (e.key !== "Enter" || e.shiftKey) return;
@@ -701,6 +759,7 @@ document.addEventListener("input", (e) => {
   if (!extensionEnabled) return;
   const composer = e.target.closest(CONFIG.composerSelector);
   if (!composer) return;
+  recordKeystroke();
   schedulePreview(composer);
 });
 
@@ -757,7 +816,7 @@ new MutationObserver(() => {
 setTimeout(() => {
   if (extensionEnabled && !findComposer()) {
     console.warn(
-      "[water] composer not found — CONFIG.composerSelector needs updating for the current claude.ai DOM"
+      "[water] composer not found — CONFIG.composerSelector (platform adapter) needs updating for the current DOM"
     );
   }
 }, 5000);

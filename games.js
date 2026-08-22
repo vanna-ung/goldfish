@@ -203,6 +203,7 @@ function maintainBackdropCreatures() {
       sizeRange: [40, 70],
       topRange: [10, 75],
       speedRange,
+      typingBoost: true,
       container: el,
     });
   }

@@ -1,23 +1,21 @@
 // EXPERIMENTAL — aquarium background for the chat area only. Kept in its
 // own file, deliberately separate from content.js's proven detection/
 // bucket/sass logic, so this can be ripped out (or manifest.json's
-// content_scripts entry trimmed back to just "content.js") without
-// touching anything stable if it doesn't work out.
+// content_scripts entry trimmed back) without touching anything stable
+// if it doesn't work out.
 //
 // Multiple files in one manifest content_scripts entry share the same JS
 // execution context (like separate <script> tags on one page), so this
 // reads `lastPhase`, `extensionEnabled`, `findComposer`, and
-// `anchorRectFor` directly from content.js — no message passing needed,
-// no changes to content.js required.
+// `anchorRectFor` directly from content.js, and `findChatMain`,
+// `isEstablishedChat`, `findDisclaimerText` from whichever platform
+// adapter loaded first (platform-claude.js / platform-chatgpt.js) — no
+// message passing, no imports.
 //
-// Scoping: verified live that claude.ai renders the sidebar and the chat
-// area as SEPARATE elements — <aside class="dframe-sidebar"> sits on top
-// (z-index 20) of <main class="dframe-content">, which spans the full
-// width underneath it. That means clearing main's own background and
-// inserting the aquarium as its first child scopes everything to the chat
-// area automatically: the sidebar is a different element entirely and is
-// never touched by this.
-const CHAT_MAIN_SELECTOR = "main.dframe-content";
+// Clearing main's own background and inserting the aquarium as its
+// first child scopes everything to the chat area automatically: the
+// sidebar is a separate element entirely (see the platform adapter) and
+// is never touched by this.
 
 // phase 1 = water occupies most of the chat area (line near the top,
 // "still mostly full"); phase 5 = water only in the bottom fifth ("nearly
@@ -34,7 +32,10 @@ const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 // water should read as genuinely flush with the top) or via a covering
 // overlay (that approach clipped glass's rounded corners and broke the
 // text-behind-glass look — see the reverted injectHeaderPatch()).
-const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
+// Overridable per platform (HEADER_HEIGHT_PX) — each site's sticky
+// header is a different height (claude.ai's ~72px vs ChatGPT's own
+// --header-height CSS variable, verified live at 52px).
+const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = typeof HEADER_HEIGHT_PX !== "undefined" ? HEADER_HEIGHT_PX : 72;
 // Glass sits this many px below wherever water's own top lands, so the
 // two lines don't sit exactly flush.
 const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;
@@ -48,6 +49,24 @@ const AQUARIUM_FISH_SPEED_RANGE_FAST = [40, 75];
 
 function pickFishSpeedRange() {
   return Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+}
+
+// "The faster you type, the faster the fish start to swim" — content.js
+// tracks a smoothed chars/sec rate (currentTypingSpeed()). Read live, on
+// every animation frame (see spawnSwimmer's step()), not baked into a
+// fish's speed once at spawn time — a fish already swimming visibly
+// speeds up and slows back down as typing speed changes, instead of the
+// boost only ever showing up on the next fish that happens to spawn
+// (which, once the tank's already at its target population, could be a
+// long time after anyone notices they're typing fast). A brisk typist
+// (~8 chars/sec) maxes out a +60% boost; not typing (or paused for a
+// few seconds) is 1x.
+const TYPING_SPEED_FISH_BOOST_MAX = 0.6;
+const TYPING_SPEED_FOR_MAX_BOOST = 8; // chars/sec
+
+function currentFishTypingBoost() {
+  const rate = typeof currentTypingSpeed === "function" ? currentTypingSpeed() : 0;
+  return 1 + Math.min(1, rate / TYPING_SPEED_FOR_MAX_BOOST) * TYPING_SPEED_FISH_BOOST_MAX;
 }
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -79,29 +98,13 @@ function aquariumIsEnabled() {
   return typeof extensionEnabled === "undefined" || extensionEnabled;
 }
 
-function findChatMain() {
-  return document.querySelector(CHAT_MAIN_SELECTOR);
-}
+// findChatMain() itself comes from the platform adapter now, not a
+// plain selector — see platform-chatgpt.js for why a single CSS
+// selector can't express what "the stable, non-scrolling anchor to
+// attach the aquarium layer to" means on every site.
 
 function aquariumAssetUrl(file) {
   return chrome.runtime.getURL(`assets/aquarium/${file}`);
-}
-
-// A NEW chat has the composer centered on the page, no ancestor uses
-// sticky positioning. An ESTABLISHED chat docks the composer to the
-// bottom via a `position: sticky` wrapper partway up the tree — verified
-// live on both layouts. Used to decide whether fish/bubbles should be
-// swimming (new chat) or the tank should just be still water (scrolling
-// through history).
-function isEstablishedChat() {
-  const composer = typeof findComposer === "function" ? findComposer() : null;
-  if (!composer) return false;
-  let el = composer.parentElement;
-  for (let i = 0; i < 14 && el; i++) {
-    if (window.getComputedStyle(el).position === "sticky") return true;
-    el = el.parentElement;
-  }
-  return false;
 }
 
 function injectAquariumStyles() {
@@ -282,14 +285,6 @@ function injectAquarium() {
   return true;
 }
 
-// No stable selector/testid on this one — found the same way it was
-// verified live, by its text content.
-function findDisclaimerText(main) {
-  return [...main.querySelectorAll("*")].find(
-    (el) => el.children.length === 0 && /double-check responses/i.test(el.textContent || "")
-  );
-}
-
 function teardownAquarium() {
   const main = findChatMain();
   if (!main) return;
@@ -375,6 +370,14 @@ function positionGlassPanel() {
   const layer = document.getElementById("water-aquarium");
   if (!glass || !layer) return;
 
+  // Per-platform trial switch — on by default, a platform adapter can
+  // set GLASS_ENABLED = false to skip the panel entirely (currently
+  // trialing that on ChatGPT).
+  if (typeof GLASS_ENABLED !== "undefined" && !GLASS_ENABLED) {
+    glass.style.display = "none";
+    return;
+  }
+
   if (!isEstablishedChat()) {
     glass.style.display = "none";
     return;
@@ -390,8 +393,15 @@ function positionGlassPanel() {
   // seam where the two lines coincided read as a rendering glitch rather
   // than an intentional glass wall sitting just past the waterline.
   glass.style.top = `calc(${aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[1])} + ${AQUARIUM_GLASS_EXTRA_TOP_PX}px)`;
-  glass.style.left = `${rect.left - layerRect.left}px`;
-  glass.style.width = `${rect.width}px`;
+  // Per-platform width adjustment in px (GLASS_WIDTH_INSET_PX, default
+  // 0) — positive narrows the glass inward from the composer's own
+  // width, negative widens it outward. On Gemini specifically, the
+  // composer's own width doesn't line up with the wider transcript
+  // column, so a glass panel sized exactly to the composer cuts across
+  // message text at its edges instead of sitting fully behind it.
+  const widthInset = typeof GLASS_WIDTH_INSET_PX !== "undefined" ? GLASS_WIDTH_INSET_PX : 0;
+  glass.style.left = `${rect.left - layerRect.left + widthInset}px`;
+  glass.style.width = `${rect.width - widthInset * 2}px`;
   // Stops at the composer's own bottom edge rather than main's — the
   // disclaimer below it already has its own separate pill-glass treatment
   // (see maintainDisclaimerGlass), so the big panel shouldn't also
@@ -408,7 +418,7 @@ function positionGlassPanel() {
 // a straight line. Shared by both creature types via `topRange`, which
 // is the only thing that differs — lobster stays confined to the bottom
 // fourth (bottom-dwelling), fish roam the fuller water column.
-function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 55], container }) {
+function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 55], typingBoost = false, container }) {
   const water = container || document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
@@ -444,7 +454,8 @@ function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 
     if (!img.isConnected) return; // removed already (teardown, established chat, etc.)
     const dt = (now - lastTime) / 1000;
     lastTime = now;
-    x += (goingRight ? 1 : -1) * speed * dt;
+    const effectiveSpeed = typingBoost ? speed * currentFishTypingBoost() : speed;
+    x += (goingRight ? 1 : -1) * effectiveSpeed * dt;
 
     if (willReverse && !hasReversed && ((goingRight && x >= reverseX) || (!goingRight && x <= reverseX))) {
       goingRight = !goingRight;
@@ -470,6 +481,7 @@ function spawnFish() {
     sizeRange: [56, 96],
     topRange: [15, 85],
     speedRange: pickFishSpeedRange(),
+    typingBoost: true,
   });
 }
 

@@ -52,6 +52,7 @@ async function getState() {
     date: todayKey(),
     count: entry.count,
     cap: effectiveCap,
+    baseCap: cap, // the configured daily cap alone, before any earned bonus — see content.js's readout
     remaining,
     fraction: effectiveCap > 0 ? remaining / effectiveCap : 0,
     capped: remaining <= 0,

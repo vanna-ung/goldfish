@@ -105,11 +105,17 @@ function injectBucket() {
   `;
   Object.assign(container.style, {
     position: "fixed",
-    // top/left set live by positionBucket() — see below
+    // top/left/height set live by positionBucket() — see below
     zIndex: 50,
     background: "#fcfcfb",
     borderRadius: "12px",
     padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    boxSizing: "border-box",
   });
   document.body.appendChild(container);
 }
@@ -132,8 +138,20 @@ function positionBucket() {
   const gapCenter = (leftBoundary + composerRect.left) / 2;
   const width = container.offsetWidth || 130;
 
-  container.style.top = `${composerRect.top + 8}px`;
+  // Vertical span matches the sass comment's top (it straddles half above
+  // the composer's own top edge — see positionSass) down to the
+  // composer's bottom edge, rather than a fixed-size box — same formula
+  // positionSass() itself uses, computed independently here since sass
+  // can be hidden (display:none has offsetHeight 0) while this widget is
+  // always visible.
+  const sass = document.getElementById("water-sass");
+  const sassHeight = sass && sass.offsetHeight > 0 ? sass.offsetHeight : 24;
+  const top = composerRect.top - sassHeight / 2;
+  const height = composerRect.bottom - top;
+
+  container.style.top = `${top}px`;
   container.style.left = `${gapCenter - width / 2}px`;
+  container.style.height = `${height}px`;
 }
 
 let bucketPositionLoopActive = false;

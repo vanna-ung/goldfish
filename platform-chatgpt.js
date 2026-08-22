@@ -15,6 +15,10 @@ const CONFIG = {
   sendButtonSelector: '[data-testid="send-button"]',
 };
 
+// Trial: skip the liquid-glass panel on ChatGPT entirely — flip back to
+// true (or just delete this line, true is the default) to bring it back.
+const GLASS_ENABLED = false;
+
 // NOT independently verified — no file was attached during the DOM
 // pass this adapter is based on, so there was nothing to find a
 // selector for. Best guess only; re-check before relying on it for

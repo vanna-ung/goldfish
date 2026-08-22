@@ -370,6 +370,14 @@ function positionGlassPanel() {
   const layer = document.getElementById("water-aquarium");
   if (!glass || !layer) return;
 
+  // Per-platform trial switch — on by default, a platform adapter can
+  // set GLASS_ENABLED = false to skip the panel entirely (currently
+  // trialing that on ChatGPT).
+  if (typeof GLASS_ENABLED !== "undefined" && !GLASS_ENABLED) {
+    glass.style.display = "none";
+    return;
+  }
+
   if (!isEstablishedChat()) {
     glass.style.display = "none";
     return;

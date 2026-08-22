@@ -493,6 +493,28 @@ document.addEventListener("click", (e) => {
   recordPromptIfNotDuped();
 });
 
+// A large paste/attachment renders as a chip with its own "Remove" (X)
+// button near its top-left corner — verified live via
+// button[aria-label="Remove"] — which the sass comment (also anchored
+// near the composer's top-left, see positionSass) can end up covering
+// since both want the same corner. Rather than hunt down and hardcode
+// that button's exact selector, just drop the sass comment's z-index
+// below normal page content while hovering any attachment chip, so
+// whatever claude.ai renders there — Remove button or otherwise — wins.
+document.addEventListener("mouseover", (e) => {
+  if (!e.target.closest(ATTACHMENT_SELECTOR)) return;
+  const sass = document.getElementById("water-sass");
+  if (sass) sass.style.zIndex = "1";
+});
+
+document.addEventListener("mouseout", (e) => {
+  const chip = e.target.closest(ATTACHMENT_SELECTOR);
+  if (!chip) return;
+  if (chip.contains(e.relatedTarget)) return; // moved within the same chip, not away from it
+  const sass = document.getElementById("water-sass");
+  if (sass) sass.style.zIndex = "50";
+});
+
 // Catch-all for content changes that don't fire a native `input` event —
 // some rich-text editors rebuild the DOM on paste without dispatching one,
 // which is why a pasted wall of text wasn't triggering anything above.

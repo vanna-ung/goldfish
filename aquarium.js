@@ -73,9 +73,7 @@ function injectAquariumStyles() {
   if (document.getElementById("aquarium-style")) return;
   const style = document.createElement("style");
   style.id = "aquarium-style";
-  style.textContent = `
-    @keyframes aquarium-wave-scroll { from { background-position-x: 0; } to { background-position-x: 36px; } }
-  `;
+  style.textContent = ``;
   document.head.appendChild(style);
 }
 
@@ -168,32 +166,8 @@ function injectAquarium() {
     top: "100%", // starts fully drained — see the fill-up animation below
     background: "linear-gradient(180deg, rgba(126,200,242,0.55) 0%, rgba(74,144,217,0.55) 100%)",
     transition: "top 800ms ease",
-    // No overflow:hidden here (unlike `layer`, which still clips at
-    // main's outer bounds) — the wave below straddles ABOVE water's own
-    // top edge on purpose, and water clipping its own children would cut
-    // that crest off, making it look tucked under the blue instead of
-    // riding on top of it.
   });
   layer.appendChild(water);
-
-  // Wave strip riding the surface, scrolling left-to-right continuously —
-  // a static top edge otherwise reads as a flat pane of glass, not water.
-  // Straddles water's top edge (half above, half below) so it visibly
-  // sits ON the surface rather than being flush with/hidden inside it.
-  const wave = document.createElement("div");
-  wave.id = "aquarium-wave";
-  Object.assign(wave.style, {
-    position: "absolute",
-    left: "0",
-    right: "0",
-    top: "-32px",
-    height: "64px",
-    backgroundImage: `url(${aquariumAssetUrl("wave.PNG")})`,
-    backgroundRepeat: "repeat-x",
-    backgroundSize: "64px 64px",
-    animation: "aquarium-wave-scroll 2.5s linear infinite",
-  });
-  water.appendChild(wave);
 
   injectSeaweed(water);
 

@@ -90,6 +90,12 @@ const SAND_LAYERS = 3;
 const SAND_LAYER_HEIGHT = 40;
 
 function injectSand(water) {
+  // Stride is shorter than each layer's own height, so consecutive layers
+  // overlap on purpose — flush (stride == height) still left a visible
+  // gap, almost certainly transparent padding baked into sand.PNG itself
+  // rather than a gap between the elements. Overlapping guarantees no
+  // seam regardless of that padding.
+  const stride = SAND_LAYER_HEIGHT * 0.6;
   for (let i = 0; i < SAND_LAYERS; i++) {
     const sand = document.createElement("div");
     sand.className = "aquarium-sand-layer";
@@ -97,7 +103,7 @@ function injectSand(water) {
       position: "absolute",
       left: "0",
       right: "0",
-      bottom: `${i * SAND_LAYER_HEIGHT}px`,
+      bottom: `${i * stride}px`,
       height: `${SAND_LAYER_HEIGHT}px`,
       backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
       backgroundRepeat: "repeat-x",
@@ -132,8 +138,8 @@ function injectSeaweed(water) {
       bottom: "0",
       left: `${leftPercent}%`,
       transform: "translateX(-50%)",
-      width: "48px",
-      height: "48px",
+      width: "80px",
+      height: "80px",
     });
     container.appendChild(frond);
   }

@@ -23,7 +23,14 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // "still mostly full"); phase 5 = water only in the bottom fifth ("nearly
 // drained by one big prompt"). Numbers are top-of-water as a % of main's
 // own height, not the viewport.
-const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 20, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
+const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
+// The glass panel's own top, independent of water's phase-based level —
+// it's the tank's glass wall, sitting partway down the screen (80% of
+// the way up) regardless of how full the water currently is. Used to be
+// hardcoded to AQUARIUM_WATER_TOP_BY_PHASE[1], which meant "restore
+// phase-1 water to 100% full" and "move the glass back down" couldn't be
+// asked for independently.
+const AQUARIUM_GLASS_TOP_PERCENT = 20;
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -215,16 +222,10 @@ function injectAquarium() {
   glass.id = "aquarium-glass";
   Object.assign(glass.style, {
     position: "absolute",
-    top: `${AQUARIUM_WATER_TOP_BY_PHASE[1]}%`,
+    top: `${AQUARIUM_GLASS_TOP_PERCENT}%`,
     bottom: "0",
     display: "none", // positionGlassPanel() turns this on for established chats
-    // Top is flush against the very top of the screen (phase-1 top is
-    // 0%) — rounding those corners and keeping the top inset highlight
-    // (both meant for a panel with visible background above it) instead
-    // read as a hazy white smear right under the page header once there
-    // was nothing left above the panel to cushion them. Bottom stays
-    // rounded where the glass meets the composer.
-    borderRadius: "0 0 28px 28px",
+    borderRadius: "28px",
     // Apple "Liquid Glass" approximation: blur + a much lighter
     // saturation boost than before — 180% was amplifying the blue water
     // showing through the blur enough that the panel read as tinted blue
@@ -233,7 +234,8 @@ function injectAquarium() {
     backdropFilter: "blur(28px) saturate(110%)",
     WebkitBackdropFilter: "blur(28px) saturate(110%)",
     background: "rgba(255,255,255,0.5)",
-    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
+    boxShadow:
+      "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
     pointerEvents: "none",
   });
   layer.appendChild(glass);
@@ -247,7 +249,7 @@ function injectAquarium() {
   water.style.transition = "top 1800ms ease";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 20}%`;
+      water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0}%`;
       setTimeout(() => {
         water.style.transition = "top 800ms ease"; // back to the normal speed for later phase changes
       }, 1800);
@@ -335,7 +337,7 @@ function maintainDisclaimerGlass() {
 function updateAquariumWaterLevel() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
-  water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 20}%`;
+  water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0}%`;
 }
 
 // Glass is only shown on established chats — a blank new chat has no

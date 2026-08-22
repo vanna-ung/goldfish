@@ -67,9 +67,10 @@ function injectGameStyles() {
       -webkit-appearance: none; margin: 0;
     }
     #water-overlay-exit {
-      position: absolute; top: 10px; right: 16px; width: 24px; height: 24px;
-      border-radius: 50%; border: none; background: rgba(74,144,217,0.15);
-      color: #2a5f8f; font-size: 14px; line-height: 1; cursor: pointer;
+      width: 32px; height: 32px; border-radius: 50%; border: none;
+      background: rgba(255,255,255,0.85); color: #2a5f8f; font-size: 16px;
+      align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
   `;
   document.head.appendChild(style);
@@ -145,6 +146,26 @@ function injectBackdrop() {
   document.body.appendChild(el);
 }
 
+// Top-left of the aquarium scene itself, not attached to the game panel —
+// stays put regardless of the panel's own size/position.
+function injectExitButton() {
+  if (document.getElementById("water-overlay-exit")) return;
+  const exitBtn = document.createElement("button");
+  exitBtn.id = "water-overlay-exit";
+  exitBtn.textContent = "✕";
+  exitBtn.setAttribute("aria-label", "Close");
+  Object.assign(exitBtn.style, {
+    position: "fixed",
+    zIndex: "51", // above both the backdrop (48) and the panel (50)
+    display: "none",
+  });
+  exitBtn.addEventListener("click", () => {
+    gameOverlayDismissed = true;
+    refreshCappedUI();
+  });
+  document.body.appendChild(exitBtn);
+}
+
 function positionBackdrop() {
   const el = document.getElementById("water-big-overlay");
   const main = gamesChatMain();
@@ -154,6 +175,12 @@ function positionBackdrop() {
   el.style.top = `${rect.top}px`;
   el.style.width = `${rect.width}px`;
   el.style.height = `${rect.height}px`;
+
+  const exitBtn = document.getElementById("water-overlay-exit");
+  if (exitBtn) {
+    exitBtn.style.left = `${rect.left + 16}px`;
+    exitBtn.style.top = `${rect.top + 16}px`;
+  }
 }
 
 const BACKDROP_FISH_TARGET = 4;
@@ -226,16 +253,6 @@ function injectOverlay() {
   });
   el.appendChild(content);
 
-  const exitBtn = document.createElement("button");
-  exitBtn.id = "water-overlay-exit";
-  exitBtn.textContent = "✕";
-  exitBtn.setAttribute("aria-label", "Close");
-  exitBtn.addEventListener("click", () => {
-    gameOverlayDismissed = true;
-    refreshCappedUI();
-  });
-  el.appendChild(exitBtn);
-
   document.body.appendChild(el);
 }
 
@@ -278,14 +295,17 @@ function stopOverlayPositionLoop() {
 
 function showBackdropAndPanel() {
   injectBackdrop();
+  injectExitButton();
   injectOverlay();
   injectComposerBlocker();
 
   const backdrop = document.getElementById("water-big-overlay");
   const panel = document.getElementById("water-overlay");
+  const exitBtn = document.getElementById("water-overlay-exit");
   const blocker = document.getElementById("water-composer-blocker");
   if (backdrop) backdrop.style.display = "block";
   if (panel) panel.style.display = "block";
+  if (exitBtn) exitBtn.style.display = "flex";
   if (blocker) blocker.style.display = "none";
 
   stopBlockerPositionLoop();
@@ -296,6 +316,12 @@ function showBackdropAndPanel() {
 
   const composer = findComposer();
   if (composer && document.activeElement === composer) composer.blur();
+
+  // Fish reaction + sass comment (content.js) would otherwise float on
+  // top of/behind this at the same z-index and just add clutter while
+  // the question is up — hidden via content.js's own hide function
+  // rather than duplicating that logic here.
+  if (typeof hidePhaseUI === "function") hidePhaseUI();
 
   const content = document.getElementById("water-overlay-content");
   if (!activeGame && content) {
@@ -310,23 +336,35 @@ function showBlockerOnly() {
 
   const backdrop = document.getElementById("water-big-overlay");
   const panel = document.getElementById("water-overlay");
+  const exitBtn = document.getElementById("water-overlay-exit");
   const blocker = document.getElementById("water-composer-blocker");
   if (backdrop) backdrop.style.display = "none";
   if (panel) panel.style.display = "none";
+  if (exitBtn) exitBtn.style.display = "none";
   if (blocker) blocker.style.display = "block";
 
   stopBackdropPositionLoop();
   stopOverlayPositionLoop();
   positionComposerBlocker();
   startBlockerPositionLoop();
+  restoreFishSass();
+}
+
+function restoreFishSass() {
+  if (typeof updatePhaseUI !== "function") return;
+  const composer = findComposer();
+  const len = typeof effectiveTypingLength === "function" ? effectiveTypingLength(composer) : 0;
+  updatePhaseUI(len, composer);
 }
 
 function hideEverything() {
   const backdrop = document.getElementById("water-big-overlay");
   const panel = document.getElementById("water-overlay");
+  const exitBtn = document.getElementById("water-overlay-exit");
   const blocker = document.getElementById("water-composer-blocker");
   if (backdrop) backdrop.style.display = "none";
   if (panel) panel.style.display = "none";
+  if (exitBtn) exitBtn.style.display = "none";
   if (blocker) blocker.style.display = "none";
   const content = document.getElementById("water-overlay-content");
   if (content) content.innerHTML = "";
@@ -334,6 +372,7 @@ function hideEverything() {
   stopBackdropPositionLoop();
   stopOverlayPositionLoop();
   stopBlockerPositionLoop();
+  restoreFishSass();
 }
 
 function refreshCappedUI() {

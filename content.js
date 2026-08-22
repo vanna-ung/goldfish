@@ -20,17 +20,10 @@ const CONFIG = {
 //    length. Drives the sass comment + fish art placeholder. Entirely
 //    client-side — no backend round-trip, since it never persists.
 
-// The fishbowl is purely a "prompts remaining" gauge — one drawing per
-// remaining count. It never looks at what's being typed; that's the
-// fish-reaction's job below. Real art: assets/fishbowl/0.PNG..10.PNG, one
-// per exact remaining count (not scaled to the cap — if the cap is ever
-// raised past 10 in settings, remaining is clamped to the 0-10 art range).
-const FISHBOWL_MAX_INDEX = 10;
-
-function fishbowlImageUrl(remaining) {
-  const index = Math.max(0, Math.min(FISHBOWL_MAX_INDEX, Math.round(remaining)));
-  return chrome.runtime.getURL(`assets/fishbowl/${index}.PNG`);
-}
+// The fishbowl widget (placeholder + "X prompts left" line) is purely a
+// "prompts remaining" gauge — never looks at what's being typed, that's
+// the fish-reaction's job below. Real fishbowl art was pulled while it's
+// being redesigned — plain placeholder box until new art lands.
 
 // Phase boundaries are intentionally short (100 chars/phase) for demo
 // purposes, not tuned to real prompt-length distributions.
@@ -76,23 +69,21 @@ const SASS_PHASES = {
 
 // Fish-out-of-water reaction, keyed by typing-length phase — gets more
 // flabbergasted the longer the pending prompt is. This is the ONLY thing
-// that reads prompt size; the fishbowl above never does. Placeholder is a
-// color + escalating emoji; swap renderFishPlaceholder()'s body for an
-// <img src="assets/fish-reaction/phase-N.png"> once the pixel art lands.
-const REACTION_PHASE_COLORS = {
-  1: "#bfe4fb",
-  2: "#8fd0f5",
-  3: "#f5d98f",
-  4: "#f2a97e",
-  5: "#e8734a",
+// that reads prompt size; the fishbowl never does. Real art has started
+// landing (assets/fish/fish_reaction.jpg, drawn as the phase-5 reaction)
+// but only that one file exists so far — used for all 5 phases as an
+// interim placeholder until the teammate finishes the rest.
+const REACTION_PHASE_IMAGE_FILES = {
+  1: "fish_reaction.jpg",
+  2: "fish_reaction.jpg",
+  3: "fish_reaction.jpg",
+  4: "fish_reaction.jpg",
+  5: "fish_reaction.jpg",
 };
-const REACTION_PHASE_EMOJI = {
-  1: "🐟",
-  2: "😯🐟",
-  3: "😮🐟",
-  4: "😱🐟",
-  5: "🫨🐟",
-};
+
+function reactionAssetUrl(file) {
+  return chrome.runtime.getURL(`assets/fish/${file}`);
+}
 
 let currentState = null; // last real state from the backend (bucket)
 let lastPhase = 0; // last typing-length phase rendered (fish + sass)
@@ -109,7 +100,7 @@ function injectBucket() {
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <img id="water-fill-img" width="130" height="130" style="display: block;" alt="fishbowl" />
+    <div id="water-fill-placeholder" style="width: 96px; height: 96px; border-radius: 12px; background: #bfe4fb; display: flex; align-items: center; justify-content: center; font-size: 32px;">🐠</div>
     <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
   `;
   Object.assign(container.style, {
@@ -123,11 +114,6 @@ function injectBucket() {
   document.body.appendChild(container);
 }
 
-// Verified live: the "Share" button's data-testid only exists on an
-// established chat (never found on /new, since there's nothing to share
-// yet) — falls back to a fixed top offset there instead.
-const SHARE_BUTTON_SELECTOR = '[data-testid="wiggle-controls-actions-share"]';
-
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
   const composer = findComposer();
@@ -135,15 +121,14 @@ function positionBucket() {
   const composerRect = anchorRectFor(composer);
   if (!composerRect) return;
 
-  const shareButton = document.querySelector(SHARE_BUTTON_SELECTOR);
-  const top = shareButton ? shareButton.getBoundingClientRect().bottom + 12 : 16;
-
-  // Centered in the leftover horizontal space to the right of the
-  // composer — same formula as positionFish() below.
-  const gapCenter = (composerRect.right + window.innerWidth) / 2;
+  // Mirror of positionFish() below — that one centers in the gap to the
+  // RIGHT of the composer (composer's right edge to the viewport's right
+  // edge); this centers in the equivalent gap on the LEFT (viewport's
+  // left edge, 0, to the composer's left edge).
+  const gapCenter = composerRect.left / 2;
   const width = container.offsetWidth || 130;
 
-  container.style.top = `${top}px`;
+  container.style.top = `${composerRect.top + 8}px`;
   container.style.left = `${gapCenter - width / 2}px`;
 }
 
@@ -162,20 +147,12 @@ function stopBucketPositionLoop() {
   bucketPositionLoopActive = false;
 }
 
-function renderFishbowlStage(remaining) {
-  const img = document.getElementById("water-fill-img");
-  if (!img) return;
-  const url = fishbowlImageUrl(remaining);
-  if (img.src !== url) img.src = url; // avoid re-triggering a load on every call
-}
-
 function updateBucket(state) {
   currentState = state;
   injectBucket();
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
-  renderFishbowlStage(state.remaining);
   readout.innerHTML = state.capped
     ? "Bucket empty — earn another prompt"
     : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
@@ -190,20 +167,15 @@ function updateBucket(state) {
 
 function injectFish() {
   if (document.getElementById("water-fish")) return;
-  const el = document.createElement("div");
+  const el = document.createElement("img");
   el.id = "water-fish";
+  el.alt = "fish reaction";
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
-    minWidth: "36px",
-    height: "36px",
-    padding: "0 6px",
-    borderRadius: "8px",
+    width: "48px",
+    height: "48px",
     display: "none",
-    alignItems: "center",
-    justifyContent: "center",
-    font: "16px system-ui, sans-serif",
-    whiteSpace: "nowrap",
   });
   document.body.appendChild(el);
 }
@@ -211,8 +183,8 @@ function injectFish() {
 function renderFishPlaceholder(phase) {
   const el = document.getElementById("water-fish");
   if (!el) return;
-  el.style.background = REACTION_PHASE_COLORS[phase] || REACTION_PHASE_COLORS[1];
-  el.textContent = REACTION_PHASE_EMOJI[phase] || REACTION_PHASE_EMOJI[1];
+  const file = REACTION_PHASE_IMAGE_FILES[phase] || REACTION_PHASE_IMAGE_FILES[1];
+  el.src = reactionAssetUrl(file);
 }
 
 function injectSass() {

@@ -30,7 +30,7 @@ const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when belo
 const AQUARIUM_BUBBLE_TARGET = 10;
 // Pufferfish shares the same pool/behavior as the regular fish — just
 // another variant that can get picked, not a separate creature type.
-const AQUARIUM_FISH_FILES = ["fish1.PNG", "fish2.PNG", "fish3.PNG", "pufferfish.PNG"];
+const AQUARIUM_FISH_FILES = ["fish1.PNG", "fish2.PNG", "fish3.PNG", "fish4.PNG", "fish5.PNG", "pufferfish.PNG"];
 const AQUARIUM_LOBSTER_FILES = ["lobster.PNG"];
 const AQUARIUM_BUBBLE_VARIANTS = 4; // bubble1.PNG..bubble4.PNG
 
@@ -83,31 +83,27 @@ function injectAquariumStyles() {
 }
 
 // ---- Sand ----
-// Real art: assets/aquarium/sand.PNG. Sits at the very bottom of the
-// water, tiled across the full width; seaweed is injected after it (see
-// injectAquarium) so it layers on top of the sand rather than under it.
-const SAND_LAYERS = 3;
-const SAND_LAYER_HEIGHT = 40;
+// Real art: assets/aquarium/sand.PNG (new version — no more stacking,
+// just one strip along the bottom). Tiled across the full width;
+// seaweed is injected after it (see injectAquarium) so it layers on top
+// of the sand rather than under it.
+const SAND_HEIGHT = 60;
 
 function injectSand(water) {
-  // Re-cropped asset (no white background) — flush stacking, no overlap
-  // or solid-backdrop workaround needed this time.
-  for (let i = 0; i < SAND_LAYERS; i++) {
-    const sand = document.createElement("div");
-    sand.className = "aquarium-sand-layer";
-    Object.assign(sand.style, {
-      position: "absolute",
-      left: "0",
-      right: "0",
-      bottom: `${i * SAND_LAYER_HEIGHT}px`,
-      height: `${SAND_LAYER_HEIGHT}px`,
-      backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
-      backgroundRepeat: "repeat-x",
-      backgroundSize: `80px ${SAND_LAYER_HEIGHT}px`,
-      backgroundPosition: "bottom",
-    });
-    water.appendChild(sand);
-  }
+  const sand = document.createElement("div");
+  sand.id = "aquarium-sand";
+  Object.assign(sand.style, {
+    position: "absolute",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    height: `${SAND_HEIGHT}px`,
+    backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
+    backgroundRepeat: "repeat-x",
+    backgroundSize: `80px ${SAND_HEIGHT}px`,
+    backgroundPosition: "bottom",
+  });
+  water.appendChild(sand);
 }
 
 // ---- Seaweed ----

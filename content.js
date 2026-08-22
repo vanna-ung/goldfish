@@ -128,8 +128,8 @@ function injectBucket() {
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <div id="water-usage-wrap" style="position: relative; width: 96px; height: 96px;">
-      <img id="water-usage-img" width="96" height="96" style="display: block; transition: opacity 250ms ease;" alt="water usage" />
+    <div id="water-usage-wrap" style="position: relative; width: 160px; height: 160px;">
+      <img id="water-usage-img" width="160" height="160" style="display: block; transition: opacity 250ms ease;" alt="water usage" />
       <div id="water-usage-cap-note" style="display: none; position: absolute; top: 4px; left: 0; right: 0; text-align: center; background: rgba(255,255,255,0.85); border-radius: 6px; padding: 2px 4px;">
         <span id="water-usage-cap-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
         <span style="font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">ml used</span>
@@ -152,7 +152,7 @@ function injectBucket() {
   document.body.appendChild(container);
 }
 
-const MAX_BUCKET_HEIGHT = 130;
+const MAX_BUCKET_HEIGHT = 200;
 
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");

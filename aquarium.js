@@ -1,23 +1,20 @@
 // EXPERIMENTAL — aquarium background for the chat area only. Kept in its
 // own file, deliberately separate from content.js's proven detection/
 // bucket/sass logic, so this can be ripped out (or manifest.json's
-// content_scripts entry trimmed back to just "content.js") without
-// touching anything stable if it doesn't work out.
+// content_scripts entry trimmed back) without touching anything stable
+// if it doesn't work out.
 //
 // Multiple files in one manifest content_scripts entry share the same JS
 // execution context (like separate <script> tags on one page), so this
 // reads `lastPhase`, `extensionEnabled`, `findComposer`, and
-// `anchorRectFor` directly from content.js — no message passing needed,
-// no changes to content.js required.
+// `anchorRectFor` directly from content.js, and `CHAT_MAIN_SELECTOR`,
+// `isEstablishedChat`, `findDisclaimerText` from the platform adapter
+// (platform-claude.js) — no message passing, no imports.
 //
-// Scoping: verified live that claude.ai renders the sidebar and the chat
-// area as SEPARATE elements — <aside class="dframe-sidebar"> sits on top
-// (z-index 20) of <main class="dframe-content">, which spans the full
-// width underneath it. That means clearing main's own background and
-// inserting the aquarium as its first child scopes everything to the chat
-// area automatically: the sidebar is a different element entirely and is
+// Clearing main's own background and inserting the aquarium as its
+// first child scopes everything to the chat area automatically: the
+// sidebar is a separate element entirely (see platform-claude.js) and is
 // never touched by this.
-const CHAT_MAIN_SELECTOR = "main.dframe-content";
 
 // phase 1 = water occupies most of the chat area (line near the top,
 // "still mostly full"); phase 5 = water only in the bottom fifth ("nearly
@@ -85,23 +82,6 @@ function findChatMain() {
 
 function aquariumAssetUrl(file) {
   return chrome.runtime.getURL(`assets/aquarium/${file}`);
-}
-
-// A NEW chat has the composer centered on the page, no ancestor uses
-// sticky positioning. An ESTABLISHED chat docks the composer to the
-// bottom via a `position: sticky` wrapper partway up the tree — verified
-// live on both layouts. Used to decide whether fish/bubbles should be
-// swimming (new chat) or the tank should just be still water (scrolling
-// through history).
-function isEstablishedChat() {
-  const composer = typeof findComposer === "function" ? findComposer() : null;
-  if (!composer) return false;
-  let el = composer.parentElement;
-  for (let i = 0; i < 14 && el; i++) {
-    if (window.getComputedStyle(el).position === "sticky") return true;
-    el = el.parentElement;
-  }
-  return false;
 }
 
 function injectAquariumStyles() {
@@ -280,14 +260,6 @@ function injectAquarium() {
   });
 
   return true;
-}
-
-// No stable selector/testid on this one — found the same way it was
-// verified live, by its text content.
-function findDisclaimerText(main) {
-  return [...main.querySelectorAll("*")].find(
-    (el) => el.children.length === 0 && /double-check responses/i.test(el.textContent || "")
-  );
 }
 
 function teardownAquarium() {

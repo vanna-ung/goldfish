@@ -1,16 +1,9 @@
-// Runs inside claude.ai. Detects sent prompts, renders the fishbowl, and
-// drives the length-based sass comment + fish art while the user types.
-//
-// Verified against the live claude.ai DOM (2026-08-21). Both are
-// data-testid attributes rather than aria-label text, which is more
-// resilient to copy/label changes than the guessed selectors this started
-// with — the previous aria-label guess ("Send Message") didn't match the
-// real one ("Send message", lowercase m), which is why sends weren't
-// being counted.
-const CONFIG = {
-  composerSelector: '[data-testid="chat-input"]',
-  sendButtonSelector: '[data-testid="chat-input-send"]',
-};
+// Detects sent prompts, renders the fishbowl, and drives the
+// length-based sass comment + fish art while the user types. Platform-
+// agnostic: CONFIG, ATTACHMENT_SELECTOR, etc. come from the platform
+// adapter (platform-claude.js today), loaded before this file — see that
+// file's own header for why they're plain shared globals rather than
+// something passed in explicitly.
 
 // ---- Two independent systems ----
 //
@@ -29,14 +22,14 @@ const CONFIG = {
 // purposes, not tuned to real prompt-length distributions.
 const PHASE_BOUNDS = [100, 200, 300, 400, 500];
 
-// Verified live: an uploaded file (or a paste large enough that claude.ai
-// converts it into a "PASTED" card) renders as a chip OUTSIDE the
-// composer's contenteditable — composer.innerText doesn't grow at all
-// when a file is attached, so without this, attaching a 50k-character PDF
-// registers as phase 1. Each attachment gets a flat weight added to the
-// effective length instead of trying to read the file's actual size.
-// 500 chars = an instant phase-5 hit, matching "lecture slides are huge."
-const ATTACHMENT_SELECTOR = '[data-testid="file-thumbnail"]';
+// An uploaded file (or a paste large enough that the site converts it
+// into a "PASTED" card) renders as a chip OUTSIDE the composer's
+// contenteditable on claude.ai — composer.innerText doesn't grow at all
+// when a file is attached (ATTACHMENT_SELECTOR, from the platform
+// adapter), so without this, attaching a 50k-character PDF registers as
+// phase 1. Each attachment gets a flat weight added to the effective
+// length instead of trying to read the file's actual size. 500 chars =
+// an instant phase-5 hit, matching "lecture slides are huge."
 const ATTACHMENT_LENGTH_WEIGHT = 500;
 
 function attachmentCount() {
@@ -189,7 +182,7 @@ function positionBucket() {
   // bounded by the SIDEBAR's right edge, not the viewport's raw left
   // edge (0) — using 0 would place this on top of/inside the sidebar
   // whenever it's open.
-  const sidebar = document.querySelector("aside.dframe-sidebar");
+  const sidebar = document.querySelector(SIDEBAR_SELECTOR);
   const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
   const gapCenter = (leftBoundary + composerRect.left) / 2;
   const width = container.offsetWidth || 160;

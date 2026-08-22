@@ -55,6 +55,7 @@ function injectAquariumStyles() {
     @keyframes aquarium-swim-right { from { left: -40px; } to { left: 100%; } }
     @keyframes aquarium-swim-left { from { right: -40px; } to { right: 100%; } }
     @keyframes aquarium-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+    @keyframes aquarium-wave-scroll { from { background-position-x: 0; } to { background-position-x: 40px; } }
   `;
   document.head.appendChild(style);
 }
@@ -91,15 +92,42 @@ function injectAquarium() {
   water.id = "aquarium-water";
   Object.assign(water.style, {
     position: "absolute",
-    left: "0",
-    right: "0",
+    // Widened 10% past each side rather than flush with the layer: at a
+    // few degrees of tilt (see the mousemove handler below), a
+    // flush-width rectangle can swing a top corner past the container's
+    // edge. The extra margin keeps it covered at any angle we actually use.
+    left: "-10%",
+    right: "-10%",
     bottom: "0",
     top: "100%", // starts fully drained — see the fill-up animation below
     background: "linear-gradient(180deg, rgba(126,200,242,0.55) 0%, rgba(74,144,217,0.55) 100%)",
     transition: "top 800ms ease",
-    transformOrigin: "50% 0%",
+    // Pivot at the BOTTOM, not the top: water sloshes with its base
+    // anchored and the surface tilting, not the other way around. With a
+    // top pivot, tilting right lifts the bottom-left corner away from the
+    // container's bottom edge and exposes the backdrop underneath it.
+    transformOrigin: "50% 100%",
   });
   layer.appendChild(water);
+
+  // Wave strip riding the surface, scrolling left-to-right continuously —
+  // a static top edge otherwise reads as a flat pane of glass, not water.
+  const wave = document.createElement("div");
+  wave.id = "aquarium-wave";
+  Object.assign(wave.style, {
+    position: "absolute",
+    left: "0",
+    right: "0",
+    top: "-8px",
+    height: "16px",
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='16' viewBox='0 0 40 16'%3E%3Cpath d='M0 8 Q10 0 20 8 T40 8 V16 H0 Z' fill='%237ec8f2'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "repeat-x",
+    backgroundSize: "40px 16px",
+    opacity: "0.8",
+    animation: "aquarium-wave-scroll 2.5s linear infinite",
+  });
+  water.appendChild(wave);
 
   for (let i = 0; i < 3; i++) {
     const frond = document.createElement("div");

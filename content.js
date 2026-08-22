@@ -302,20 +302,18 @@ function renderMlUsedDigits(totalPromptsSent) {
   renderDigitSprites(digitsEl, (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY, 10);
 }
 
-// ---- Daily usage tracker (underneath the fishbowl) ----
+// ---- Usage tracker (underneath the fishbowl) ----
 // Separate metric from both the daily prompt cap and the lifetime usage
-// fishbowl above: estimates tokens sent ("in") and received back ("out")
-// today from character counts (see estimateTokens() below — no real
-// tokenizer is available client-side), converts that to an "X mL used
-// today" figure (background.js's ML_PER_TOKEN), and resets at midnight
-// along with the rest of the daily entry.
+// fishbowl above, though it shares that fishbowl's "ever, everywhere"
+// nature: a flat mL-per-prompt rate (background.js's ML_PER_PROMPT_USAGE)
+// off totalPromptsSent, universal across chats and days, never resets.
 function injectUsageTracker() {
   if (document.getElementById("water-usage-tracker")) return;
   const el = document.createElement("div");
   el.id = "water-usage-tracker";
   el.innerHTML = `
     <span id="water-usage-tracker-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
-    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used today</span>
+    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used</span>
   `;
   Object.assign(el.style, {
     position: "fixed",
@@ -331,7 +329,7 @@ function injectUsageTracker() {
 function updateUsageTracker(state) {
   injectUsageTracker();
   const digitsEl = document.getElementById("water-usage-tracker-digits");
-  if (digitsEl) renderDigitSprites(digitsEl, state.mlUsedToday ?? 0, 12);
+  if (digitsEl) renderDigitSprites(digitsEl, state.mlUsed ?? 0, 12);
 }
 
 function positionUsageTracker() {
@@ -663,69 +661,13 @@ function composerCharCount(composer) {
 const DEDUPE_WINDOW_MS = 1000;
 let lastRecordedAt = 0;
 
-// Best-known typed length, kept fresh by the "input" listener and the
-// MutationObserver fallback below (not re-read from the composer at
-// send-time) — by the time our listeners run, claude.ai's own send
-// handler may already have cleared the composer, which would make a
-// fresh read come back empty regardless of what was actually sent.
-let currentComposerLen = 0;
-
 function recordPromptIfNotDuped() {
   const now = Date.now();
   if (now - lastRecordedAt < DEDUPE_WINDOW_MS) return;
   lastRecordedAt = now;
   chrome.runtime.sendMessage({ type: "RECORD_PROMPT" }, (state) => {
     if (chrome.runtime.lastError) return;
-    if (state) updateBucket(state);
-  });
-  beginUsageCapture(currentComposerLen);
-}
-
-// ---- Token/mL estimation for the daily usage tracker ----
-// No real tokenizer is available client-side, so both directions use the
-// same rough "~4 characters per token" rule of thumb — good enough for a
-// ballpark mL figure, not meant to be exact.
-function estimateTokens(charCount) {
-  return Math.ceil((charCount || 0) / 4);
-}
-
-// The chat transcript's total text grows by roughly (what the user just
-// sent) + (what Claude replies with) once a response finishes streaming.
-// Snapshotting main's text length right before sending and again once
-// things go quiet, then subtracting the known input length, isolates an
-// estimate of just the reply — without needing a selector for assistant
-// message bubbles specifically, which haven't been verified against the
-// live DOM.
-let pendingUsageCapture = null;
-let usageQuietTimer = null;
-const USAGE_QUIET_MS = 2500; // no chat-area DOM changes for this long = the response finished streaming
-
-function chatTextLength() {
-  const main = typeof findChatMain === "function" ? findChatMain() : null;
-  return ((main || document.body).innerText || "").length;
-}
-
-function beginUsageCapture(inputLen) {
-  pendingUsageCapture = { inputLen, mainLenBefore: chatTextLength() };
-  armUsageQuietTimer();
-}
-
-function armUsageQuietTimer() {
-  if (!pendingUsageCapture) return;
-  clearTimeout(usageQuietTimer);
-  usageQuietTimer = setTimeout(finishUsageCapture, USAGE_QUIET_MS);
-}
-
-function finishUsageCapture() {
-  if (!pendingUsageCapture) return;
-  const { inputLen, mainLenBefore } = pendingUsageCapture;
-  pendingUsageCapture = null;
-  const outputLen = Math.max(0, chatTextLength() - mainLenBefore - inputLen);
-  const tokensIn = estimateTokens(inputLen);
-  const tokensOut = estimateTokens(outputLen);
-  chrome.runtime.sendMessage({ type: "RECORD_USAGE", tokensIn, tokensOut }, (state) => {
-    if (chrome.runtime.lastError) return;
-    if (state) updateUsageTracker(state);
+    if (state) updateBucket(state); // includes state.mlUsed — see updateUsageTracker()
   });
 }
 
@@ -759,7 +701,6 @@ document.addEventListener("input", (e) => {
   if (!extensionEnabled) return;
   const composer = e.target.closest(CONFIG.composerSelector);
   if (!composer) return;
-  currentComposerLen = effectiveTypingLength(composer);
   schedulePreview(composer);
 });
 
@@ -800,11 +741,6 @@ document.addEventListener("mouseout", (e) => {
 let lastObservedLen = -1;
 let mutationScheduled = false;
 new MutationObserver(() => {
-  // Unconditional and undebounced: this is what tells finishUsageCapture()
-  // the response is still streaming, so it needs to see every mutation,
-  // not just the ones that survive the 200ms debounce below.
-  if (pendingUsageCapture) armUsageQuietTimer();
-
   if (mutationScheduled) return;
   mutationScheduled = true;
   setTimeout(() => {
@@ -812,7 +748,6 @@ new MutationObserver(() => {
     if (!extensionEnabled) return;
     const composer = findComposer();
     const len = effectiveTypingLength(composer);
-    currentComposerLen = len;
     if (len === lastObservedLen) return;
     lastObservedLen = len;
     updatePhaseUI(len, composer);

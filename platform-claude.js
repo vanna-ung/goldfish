@@ -43,6 +43,14 @@ const HEADER_HEIGHT_PX = 72;
 const SIDEBAR_SELECTOR = "aside.dframe-sidebar";
 const CHAT_MAIN_SELECTOR = "main.dframe-content";
 
+// main.dframe-content doesn't scroll itself (a separate inner wrapper
+// handles that), so a plain selector lookup is a stable, non-scrolling
+// anchor to attach the aquarium layer to — unlike ChatGPT, see
+// platform-chatgpt.js's own findChatMain() for why that one needs more.
+function findChatMain() {
+  return document.querySelector(CHAT_MAIN_SELECTOR);
+}
+
 function sidebarRightEdge() {
   const sidebar = document.querySelector(SIDEBAR_SELECTOR);
   return sidebar ? sidebar.getBoundingClientRect().right : 0;

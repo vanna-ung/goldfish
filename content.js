@@ -229,6 +229,23 @@ function setReadoutGameMode(on) {
   }
 }
 
+// Some platforms (ChatGPT's "+" attach menu, and similar popovers near
+// the composer) can open directly over the readout or sass comment —
+// FILE_MENU_SELECTOR is an optional platform-adapter constant so this
+// is a no-op wherever it isn't defined (claude.ai has no such menu).
+function getOpenFileMenuRect() {
+  if (typeof FILE_MENU_SELECTOR === "undefined") return null;
+  const menu = document.querySelector(FILE_MENU_SELECTOR);
+  if (!menu) return null;
+  const rect = menu.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null; // present but not actually open/visible
+  return rect;
+}
+
+function rectsOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 function positionReadout() {
   if (readoutGameMode) return; // games.js positions it above the game panel instead
   const readout = document.getElementById("water-readout");
@@ -241,8 +258,23 @@ function positionReadout() {
   // both a new chat (composer centered) and an established one (docked
   // bottom), since it's always relative to composerRect regardless of
   // where that rect currently sits on screen.
-  readout.style.top = `${composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER}px`;
-  readout.style.left = `${composerRect.left}px`;
+  const left = composerRect.left;
+  let top = composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
+
+  // If an open file menu would sit on top of that natural position,
+  // drop below the menu instead of behind it — whichever direction the
+  // menu opened (it can flip above/below the composer depending on
+  // available room).
+  const menuRect = getOpenFileMenuRect();
+  if (menuRect) {
+    const naturalRect = { left, right: left + readout.offsetWidth, top, bottom: top + readout.offsetHeight };
+    if (rectsOverlap(menuRect, naturalRect)) {
+      top = menuRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
+    }
+  }
+
+  readout.style.top = `${top}px`;
+  readout.style.left = `${left}px`;
 }
 
 let bucketPositionLoopActive = false;
@@ -471,6 +503,14 @@ function positionSass(composerRect) {
   // gets deleted: the comment rides the top edge down with it, no separate
   // handling needed for that case.
   el.style.top = `${composerRect.top - el.offsetHeight / 2}px`;
+
+  // Unlike the readout, there's no good spot to relocate the comment to
+  // once a file menu is covering the composer's top edge — hide it
+  // instead. visibility (not display) so this stays independent of
+  // updatePhaseUI()'s own display:block/none, which tracks whether
+  // there's a comment to show at all, not this menu-conflict case.
+  const menuRect = getOpenFileMenuRect();
+  el.style.visibility = menuRect && rectsOverlap(menuRect, el.getBoundingClientRect()) ? "hidden" : "";
 }
 
 // The composer's own contenteditable node grows unbounded and sits inside

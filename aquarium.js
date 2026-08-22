@@ -7,14 +7,15 @@
 // Multiple files in one manifest content_scripts entry share the same JS
 // execution context (like separate <script> tags on one page), so this
 // reads `lastPhase`, `extensionEnabled`, `findComposer`, and
-// `anchorRectFor` directly from content.js, and `CHAT_MAIN_SELECTOR`,
-// `isEstablishedChat`, `findDisclaimerText` from the platform adapter
-// (platform-claude.js) — no message passing, no imports.
+// `anchorRectFor` directly from content.js, and `findChatMain`,
+// `isEstablishedChat`, `findDisclaimerText` from whichever platform
+// adapter loaded first (platform-claude.js / platform-chatgpt.js) — no
+// message passing, no imports.
 //
 // Clearing main's own background and inserting the aquarium as its
 // first child scopes everything to the chat area automatically: the
-// sidebar is a separate element entirely (see platform-claude.js) and is
-// never touched by this.
+// sidebar is a separate element entirely (see the platform adapter) and
+// is never touched by this.
 
 // phase 1 = water occupies most of the chat area (line near the top,
 // "still mostly full"); phase 5 = water only in the bottom fifth ("nearly
@@ -97,9 +98,10 @@ function aquariumIsEnabled() {
   return typeof extensionEnabled === "undefined" || extensionEnabled;
 }
 
-function findChatMain() {
-  return document.querySelector(CHAT_MAIN_SELECTOR);
-}
+// findChatMain() itself comes from the platform adapter now, not a
+// plain selector — see platform-chatgpt.js for why a single CSS
+// selector can't express what "the stable, non-scrolling anchor to
+// attach the aquarium layer to" means on every site.
 
 function aquariumAssetUrl(file) {
   return chrome.runtime.getURL(`assets/aquarium/${file}`);

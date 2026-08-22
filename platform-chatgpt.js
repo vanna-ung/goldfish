@@ -22,6 +22,17 @@ const CONFIG = {
 // content.js).
 const ATTACHMENT_SELECTOR = '[data-testid*="attachment" i]';
 
+// The "+" button's attach/tools menu (Add photos & files, Web search,
+// etc.) — verified live via its actual class list, "popover" among a
+// long generated Tailwind string. Opens below the composer when there's
+// room (new chat, composer vertically centered) or above it when there
+// isn't (established chat, composer docked near the bottom) — a Radix
+// popper, so it flips automatically; content.js reacts to wherever it
+// currently is rather than assuming a fixed direction. Other ChatGPT
+// popovers likely share this same base class and get the same
+// treatment, which is fine — they'd cause the same visual conflict.
+const FILE_MENU_SELECTOR = ".popover";
+
 // ChatGPT's composer reads as almost pill-shaped — a full pill radius
 // matches that instead of claude.ai's more modest rounded rect. Padding
 // is shorter top/bottom than claude.ai's: the sass comment straddles
@@ -61,20 +72,31 @@ function sidebarRightEdge() {
   return candidates.reduce((max, el) => (el ? Math.max(max, el.getBoundingClientRect().right) : max), 0);
 }
 
-// NOT main#main — verified live (signed-in session, long conversation)
-// that main#main's own box is only ever one viewport tall (clientHeight)
-// even though its content overflows far past that (scrollHeight in the
-// tens of thousands of px on a long chat), and main itself moves as its
-// parent scrolls (its rect.top goes deeply negative). Since the aquarium
-// layer sizes/positions itself relative to whatever CHAT_MAIN_SELECTOR
-// resolves to, attaching to main directly meant the water/sand/glass
-// scrolled away with the conversation instead of staying pinned to the
-// viewport — visually "water only covers one screen's height from the
-// top." The actual stable, viewport-bound scrolling container is one
-// level up: a div with `overflow-y: auto` and a purpose-built
-// `data-scroll-root` attribute, confirmed via getComputedStyle to be
-// the real scrollable element (main's own overflow-y is "visible").
-const CHAT_MAIN_SELECTOR = "[data-scroll-root]";
+// NOT main#main, and NOT [data-scroll-root] either — both tried and
+// both wrong, verified live (signed-in session, long conversation,
+// artificially scrolled thousands of px via scrollTop and re-measured):
+//
+// - main#main's own box is only ever one viewport tall even though its
+//   content overflows far past that, and main itself moves as its
+//   scrolling ancestor scrolls (rect.top goes deeply negative) — so a
+//   layer attached to main scrolls away with it.
+// - [data-scroll-root] (one level up, the actual `overflow-y: auto`
+//   element) looked like the fix, but position:absolute children DO
+//   scroll along with their own scrolling containing block — that's
+//   normal CSS behavior, not something position:absolute exempts you
+//   from. A test layer attached there also scrolled away, confirmed by
+//   directly setting scrollTop and re-reading getBoundingClientRect().
+//
+// The real fix is the PARENT of [data-scroll-root]: itself not a
+// scroll container (overflow-y: visible), so its own box never moves
+// when the descendant scrolls — confirmed by the same scrollTop test,
+// this one's rect stayed exactly put. That's the actual equivalent of
+// claude.ai's main.dframe-content (a stable, non-scrolling, viewport-
+// bound anchor with the scrolling happening in a descendant instead).
+function findChatMain() {
+  const scrollRoot = document.querySelector("[data-scroll-root]");
+  return scrollRoot && scrollRoot.parentElement;
+}
 
 // A blank new chat has 0 rendered messages; sending one adds
 // [data-message-author-role] elements for both turns. Verified live:

@@ -218,7 +218,13 @@ function injectAquarium() {
     top: `${AQUARIUM_WATER_TOP_BY_PHASE[1]}%`,
     bottom: "0",
     display: "none", // positionGlassPanel() turns this on for established chats
-    borderRadius: "28px",
+    // Top is flush against the very top of the screen (phase-1 top is
+    // 0%) — rounding those corners and keeping the top inset highlight
+    // (both meant for a panel with visible background above it) instead
+    // read as a hazy white smear right under the page header once there
+    // was nothing left above the panel to cushion them. Bottom stays
+    // rounded where the glass meets the composer.
+    borderRadius: "0 0 28px 28px",
     // Apple "Liquid Glass" approximation: blur + a much lighter
     // saturation boost than before — 180% was amplifying the blue water
     // showing through the blur enough that the panel read as tinted blue
@@ -227,8 +233,7 @@ function injectAquarium() {
     backdropFilter: "blur(28px) saturate(110%)",
     WebkitBackdropFilter: "blur(28px) saturate(110%)",
     background: "rgba(255,255,255,0.5)",
-    boxShadow:
-      "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
     pointerEvents: "none",
   });
   layer.appendChild(glass);

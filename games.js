@@ -308,6 +308,16 @@ function stopOverlayPositionLoop() {
 
 // ---- Orchestration ----
 
+// The fishbowl (content.js's #water-tracker-bucket) sits to the left of
+// the composer normally, but that spot is covered by the aquarium-scene
+// backdrop while a game is up — hidden for that window so it doesn't
+// float on top of/behind the backdrop, same idea as hidePhaseUI() for
+// the fish reaction + sass comment above.
+function setFishbowlVisible(visible) {
+  const bucket = document.getElementById("water-tracker-bucket");
+  if (bucket) bucket.style.display = visible ? "flex" : "none";
+}
+
 function showBackdropAndPanel() {
   injectBackdrop();
   injectExitButton();
@@ -331,6 +341,7 @@ function showBackdropAndPanel() {
 
   if (typeof setReadoutGameMode === "function") setReadoutGameMode(true);
   positionReadoutAboveGame();
+  setFishbowlVisible(false);
 
   const composer = findComposer();
   if (composer && document.activeElement === composer) composer.blur();
@@ -366,6 +377,7 @@ function showBlockerOnly() {
   positionComposerBlocker();
   startBlockerPositionLoop();
   if (typeof setReadoutGameMode === "function") setReadoutGameMode(false);
+  setFishbowlVisible(true);
   restoreFishSass();
 }
 
@@ -392,6 +404,7 @@ function hideEverything() {
   stopOverlayPositionLoop();
   stopBlockerPositionLoop();
   if (typeof setReadoutGameMode === "function") setReadoutGameMode(false);
+  setFishbowlVisible(true);
   restoreFishSass();
 }
 

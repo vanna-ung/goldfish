@@ -197,7 +197,19 @@ function positionBucket() {
   const width = container.offsetWidth || 160;
 
   container.style.left = `${gapCenter - width / 2}px`;
-  container.style.top = `${composerRect.top + composerRect.height / 2 - container.offsetHeight / 2}px`;
+
+  // Rests on top of the aquarium's sand strip (aquarium.js) when it's
+  // there, so the fishbowl reads as part of the scene instead of
+  // floating independently of it. Falls back to vertically centering on
+  // the composer if the aquarium hasn't injected yet (e.g. right at
+  // load, before aquarium.js's own first tick has run).
+  const sand = document.querySelector("#water-aquarium #aquarium-sand");
+  if (sand) {
+    const sandRect = sand.getBoundingClientRect();
+    container.style.top = `${sandRect.top - container.offsetHeight}px`;
+  } else {
+    container.style.top = `${composerRect.top + composerRect.height / 2 - container.offsetHeight / 2}px`;
+  }
 }
 
 // While a game screen is up, games.js takes over the readout's styling
@@ -374,6 +386,18 @@ function injectSass() {
   document.body.appendChild(el);
 }
 
+// Vertical offset from composerRect.top, per reaction file — reaction2
+// renders at 220px (see REACTION_IMAGE_SIZE) instead of the 150px
+// default, so anchoring it at the same +8 offset as the others left it
+// hanging noticeably further down past the composer. Shifting it up
+// keeps it reading as anchored near the composer's top edge like the
+// rest. Purely a function of composerRect, so it applies the same way
+// in both new and established chats.
+const REACTION_IMAGE_TOP_OFFSET = {
+  "reaction2.PNG": -60,
+};
+const DEFAULT_REACTION_TOP_OFFSET = 8;
+
 function positionFish(composerRect) {
   const el = document.getElementById("water-fish");
   if (!el || !composerRect) return;
@@ -382,7 +406,9 @@ function positionFish(composerRect) {
   const gapCenter = (composerRect.right + window.innerWidth) / 2;
   const fishWidth = el.offsetWidth || 36;
   el.style.left = `${gapCenter - fishWidth / 2}px`;
-  el.style.top = `${composerRect.top + 8}px`;
+  const file = REACTION_PHASE_IMAGE_FILES[lastReactionPhase] ?? REACTION_PHASE_IMAGE_FILES[0];
+  const topOffset = REACTION_IMAGE_TOP_OFFSET[file] ?? DEFAULT_REACTION_TOP_OFFSET;
+  el.style.top = `${composerRect.top + topOffset}px`;
 }
 
 function positionSass(composerRect) {

@@ -1,19 +1,17 @@
-// "Earn a prompt back" minigames — shown as a blocking overlay over the
-// composer once the daily cap (plus any earned bonus) is used up. Kept in
-// its own file for the same reason as aquarium.js: shares content.js's
-// execution context (currentState, findComposer, anchorRectFor,
-// extensionEnabled, updateBucket) without message passing or changes to
-// the already-working core.
+// "Earn a prompt back" minigames — shown once the daily cap (plus any
+// earned bonus) is used up. Kept in its own file for the same reason as
+// aquarium.js: shares content.js's execution context (currentState,
+// findComposer, anchorRectFor, extensionEnabled, updateBucket) without
+// message passing or changes to the already-working core.
 //
-// "Blocking" here is DOM coverage, not a real intercept: a
-// pointer-events:auto panel is positioned exactly over the composer's
-// stable anchor rect (the same one content.js uses for the sass comment),
-// so clicks can't reach the real composer/send button underneath. It also
-// blurs the composer once when the overlay first appears, to reduce (not
-// eliminate) the case where focus was already in the composer before the
-// cap was hit — a content script can't truly intercept claude.ai's own
-// submit handling, only cover it. The overlay is scoped to just the
-// composer's box, so the chat transcript above it stays fully usable.
+// The panel floats in the gap above the composer — between the end of the
+// conversation and the top of the prompt box — rather than covering the
+// composer itself. Stretching it to match the composer's exact box (an
+// earlier version of this) visually broke the real input underneath it,
+// which isn't what this is for. It still calls composer.blur() once when
+// it appears as a mild nudge, but this isn't a hard block on typing/
+// sending — a content script can't truly intercept claude.ai's own submit
+// handling, only sit near it.
 
 const GAMES = ["multiplication", "memory"];
 let activeGame = null; // "multiplication" | "memory" | null while the overlay is up
@@ -79,16 +77,21 @@ function injectOverlay() {
   document.body.appendChild(el);
 }
 
+const OVERLAY_WIDTH = 380;
+const OVERLAY_HEIGHT = 240;
+const OVERLAY_GAP_ABOVE_COMPOSER = 16;
+
 function positionOverlay() {
   const el = document.getElementById("water-overlay");
   const composer = findComposer();
   if (!el || !composer) return;
   const rect = anchorRectFor(composer);
   if (!rect) return;
-  el.style.left = `${rect.left}px`;
-  el.style.top = `${rect.top}px`;
-  el.style.width = `${rect.width}px`;
-  el.style.height = `${rect.height}px`;
+  const width = Math.min(OVERLAY_WIDTH, rect.width);
+  el.style.width = `${width}px`;
+  el.style.height = `${OVERLAY_HEIGHT}px`;
+  el.style.left = `${rect.left + (rect.width - width) / 2}px`;
+  el.style.top = `${rect.top - OVERLAY_HEIGHT - OVERLAY_GAP_ABOVE_COMPOSER}px`;
 }
 
 let overlayPositionLoopActive = false;
@@ -147,31 +150,53 @@ function earnPromptAndClose() {
 // spiral. Problem is rendered with the teammate's pixel digit/operator
 // sprites; the answer itself is a plain number input for reliability.
 
+// "question box.PNG" is the tile FRAME every digit/operator sits inside,
+// not a standalone "?" marker — each character renders as its own glyph
+// layered on top of that frame image.
 const NUMBER_ASSET_FILES = {
   "0": "0.PNG", "1": "1.PNG", "2": "2.PNG", "3": "3.PNG", "4": "4.PNG",
   "5": "5.PNG", "6": "6.PNG", "7": "7.PNG", "8": "8.PNG", "9": "9.PNG",
-  x: "x.PNG", "=": "=.PNG", "?": "question box.PNG",
+  x: "x.PNG", "=": "=.PNG",
 };
+const NUMBER_TILE_FRAME_FILE = "question box.PNG";
 
-function numberAssetUrl(char) {
-  const file = NUMBER_ASSET_FILES[char];
-  // encodeURIComponent for the "question box.PNG" filename's space — safe
-  // here since `file` is always a bare filename, never contains a slash.
-  return file ? chrome.runtime.getURL(`assets/numbers/${encodeURIComponent(file)}`) : null;
+function numberAssetUrl(file) {
+  // encodeURIComponent for the frame filename's space — safe here since
+  // `file` is always a bare filename, never contains a slash.
+  return chrome.runtime.getURL(`assets/numbers/${encodeURIComponent(file)}`);
 }
 
 function renderProblemTiles(container, n1, n2) {
   container.innerHTML = "";
-  const chars = [...String(n1), "x", ...String(n2), "=", "?"];
+  const frameUrl = numberAssetUrl(NUMBER_TILE_FRAME_FILE);
+  const chars = [...String(n1), "x", ...String(n2), "="];
   chars.forEach((ch) => {
-    const url = numberAssetUrl(ch);
-    if (!url) return;
-    const img = document.createElement("img");
-    img.src = url;
-    img.alt = ch;
-    img.width = 28;
-    img.height = 28;
-    container.appendChild(img);
+    const glyphFile = NUMBER_ASSET_FILES[ch];
+    if (!glyphFile) return;
+    const tile = document.createElement("div");
+    Object.assign(tile.style, {
+      position: "relative",
+      width: "32px",
+      height: "32px",
+      backgroundImage: `url(${frameUrl})`,
+      backgroundSize: "contain",
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "center",
+      flexShrink: "0",
+    });
+    const glyph = document.createElement("img");
+    glyph.src = numberAssetUrl(glyphFile);
+    glyph.alt = ch;
+    Object.assign(glyph.style, {
+      position: "absolute",
+      inset: "0",
+      margin: "auto",
+      width: "65%",
+      height: "65%",
+      objectFit: "contain",
+    });
+    tile.appendChild(glyph);
+    container.appendChild(tile);
   });
 }
 

@@ -105,10 +105,8 @@ let extensionEnabled = true;
 // Stage 0 = nothing sent, ever. Stage 1 = right after the very first
 // prompt. Stages 2-8 each need two MORE prompts past the previous stage
 // (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 total sent). Stage 8 is
-// terminal — stays there and shows the ml-used note instead of climbing
-// further.
+// terminal — stays there rather than climbing further.
 const USAGE_MAX_STAGE = 8;
-const ML_PER_PROMPT_DISPLAY = 25; // placeholder estimate, tune whenever
 
 function usageStageFor(totalPromptsSent) {
   const total = totalPromptsSent || 0;
@@ -138,10 +136,6 @@ function injectBucket() {
   container.innerHTML = `
     <div id="water-usage-wrap" style="position: relative; width: 160px; height: 160px;">
       <img id="water-usage-img" width="160" height="160" style="display: block; transition: opacity 250ms ease;" alt="water usage" />
-      <div id="water-usage-cap-note" style="display: none; position: absolute; top: 4px; left: 0; right: 0; text-align: center; background: rgba(255,255,255,0.85); border-radius: 6px; padding: 2px 4px;">
-        <span id="water-usage-cap-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
-        <span style="font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">ml used</span>
-      </div>
     </div>
   `;
   Object.assign(container.style, {
@@ -328,12 +322,6 @@ function renderDigitSprites(container, number, size) {
     });
 }
 
-function renderMlUsedDigits(totalPromptsSent) {
-  const digitsEl = document.getElementById("water-usage-cap-digits");
-  if (!digitsEl) return;
-  renderDigitSprites(digitsEl, (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY, 10);
-}
-
 // ---- Usage tracker (underneath the fishbowl) ----
 // Separate metric from both the daily prompt cap and the lifetime usage
 // fishbowl above, though it shares that fishbowl's "ever, everywhere"
@@ -384,17 +372,7 @@ function updateBucket(state) {
     ? "Play the game to get another prompt!"
     : `<strong>${state.remaining}</strong>/${state.cap} prompts left today`;
 
-  const stage = usageStageFor(state.totalPromptsSent);
-  setUsageStage(stage);
-  const capNote = document.getElementById("water-usage-cap-note");
-  if (capNote) {
-    if (stage >= USAGE_MAX_STAGE) {
-      renderMlUsedDigits(state.totalPromptsSent);
-      capNote.style.display = "block";
-    } else {
-      capNote.style.display = "none";
-    }
-  }
+  setUsageStage(usageStageFor(state.totalPromptsSent));
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.

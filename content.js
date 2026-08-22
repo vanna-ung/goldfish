@@ -94,13 +94,47 @@ let extensionEnabled = true;
 
 // ---- Fishbowl ----
 
+// Universal usage fishbowl (assets/usage/0-8.PNG) — driven by
+// state.totalPromptsSent, a lifetime count that never resets and is the
+// same across every chat (see getTotalPromptsSent() in background.js).
+// Separate from the daily cap this widget's text readout below still
+// shows; this image purely visualizes cumulative usage.
+//
+// Stage 0 = nothing sent, ever. Stage 1 = right after the very first
+// prompt. Stages 2-8 each need two MORE prompts past the previous stage
+// (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 total sent). Stage 8 is
+// terminal — stays there and shows the ml-used note instead of climbing
+// further.
+const USAGE_MAX_STAGE = 8;
+const ML_PER_PROMPT_DISPLAY = 25; // placeholder estimate, tune whenever
+
+function usageStageFor(totalPromptsSent) {
+  const total = totalPromptsSent || 0;
+  if (total <= 0) return 0;
+  return Math.min(USAGE_MAX_STAGE, 1 + Math.floor((total - 1) / 2));
+}
+
+function usageImageUrl(stage) {
+  return chrome.runtime.getURL(`assets/usage/${stage}.PNG`);
+}
+
+function digitAssetUrl(digit) {
+  return chrome.runtime.getURL(`assets/numbers/${digit}.PNG`);
+}
+
 function injectBucket() {
   if (document.getElementById("water-tracker-bucket")) return;
 
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <div id="water-fill-placeholder" style="width: 96px; height: 96px; border-radius: 12px; background: #bfe4fb; display: flex; align-items: center; justify-content: center; font-size: 32px;">🐠</div>
+    <div id="water-usage-wrap" style="position: relative; width: 96px; height: 96px;">
+      <img id="water-usage-img" width="96" height="96" style="display: block; transition: opacity 250ms ease;" alt="water usage" />
+      <div id="water-usage-cap-note" style="display: none; position: absolute; top: 4px; left: 0; right: 0; text-align: center; background: rgba(255,255,255,0.85); border-radius: 6px; padding: 2px 4px;">
+        <span id="water-usage-cap-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
+        <span style="font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">ml used</span>
+      </div>
+    </div>
     <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
   `;
   Object.assign(container.style, {
@@ -178,6 +212,40 @@ function stopBucketPositionLoop() {
   bucketPositionLoopActive = false;
 }
 
+// Crossfades rather than swapping instantly — covers "animate to 1.png"
+// on the very first prompt and reads consistently for every later stage
+// change too, not just that first one.
+function setUsageStage(stage) {
+  const img = document.getElementById("water-usage-img");
+  if (!img) return;
+  if (img.dataset.stage === String(stage)) return; // already showing this stage
+  img.dataset.stage = String(stage);
+  const url = usageImageUrl(stage);
+  img.style.opacity = "0";
+  setTimeout(() => {
+    img.src = url;
+    requestAnimationFrame(() => {
+      img.style.opacity = "1";
+    });
+  }, 200);
+}
+
+function renderMlUsedDigits(totalPromptsSent) {
+  const digitsEl = document.getElementById("water-usage-cap-digits");
+  if (!digitsEl) return;
+  const ml = (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY;
+  digitsEl.innerHTML = "";
+  String(ml)
+    .split("")
+    .forEach((digit) => {
+      const img = document.createElement("img");
+      img.src = digitAssetUrl(digit);
+      img.width = 10;
+      img.height = 10;
+      digitsEl.appendChild(img);
+    });
+}
+
 function updateBucket(state) {
   currentState = state;
   injectBucket();
@@ -187,6 +255,18 @@ function updateBucket(state) {
   readout.innerHTML = state.capped
     ? "Bucket empty — earn another prompt"
     : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
+
+  const stage = usageStageFor(state.totalPromptsSent);
+  setUsageStage(stage);
+  const capNote = document.getElementById("water-usage-cap-note");
+  if (capNote) {
+    if (stage >= USAGE_MAX_STAGE) {
+      renderMlUsedDigits(state.totalPromptsSent);
+      capNote.style.display = "block";
+    } else {
+      capNote.style.display = "none";
+    }
+  }
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.

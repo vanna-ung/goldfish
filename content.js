@@ -109,7 +109,7 @@ function injectBucket() {
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <img id="water-fill-img" width="80" height="80" style="display: block;" alt="fishbowl" />
+    <img id="water-fill-img" width="130" height="130" style="display: block;" alt="fishbowl" />
     <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
   `;
   Object.assign(container.style, {

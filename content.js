@@ -61,32 +61,43 @@ function phaseForLength(len) {
 // every keystroke, so it doesn't flicker while typing).
 const SASS_PHASES = {
   1: ["still thinking that through yourself?", "not bad, short and sweet"],
-  2: ["getting wordy over there", "hope that's necessary"],
-  3: ["congratulations, you're irrigation", "hope that one was worth it"],
-  4: ["Wivenhoe is watching", "that's a lot of water for one thought"],
-  5: ["at this point just move to the ocean", "this bowl doesn't stand a chance"],
+  2: ["getting wordy over there", "hope that's necessary", "Enough to make a thirst trap"],
+  3: ["congratulations, you're irrigation", "hope that one was worth it", "Chat, this is a lot of water"],
+  4: ["Wivenhoe is watching", "that's a lot of water for one thought", "Touch grass. It's well watered now"],
+  5: ["at this point just move to the ocean", "this bowl doesn't stand a chance", "Aura: evaporated"],
 };
 
 // Fish-out-of-water reaction, keyed by typing-length phase — gets more
 // flabbergasted the longer the pending prompt is. This is the ONLY thing
-// that reads prompt size; the fishbowl never does. Real art has started
-// landing (assets/fish/fish_reaction.png, drawn as the phase-5 reaction)
-// but only that one file exists so far — used for all 5 phases as an
-// interim placeholder until the teammate finishes the rest.
+// that reads prompt size; the fishbowl never does.
+//
+// Key 0 is the empty-composer resting state (distinct from phase 1, which
+// starts as soon as the user types anything) — reaction1.png for that
+// isn't drawn yet, so it reuses reaction2.png for now. Swap the "0" entry
+// to "reaction1.png" once that art lands; nothing else needs to change.
 const REACTION_PHASE_IMAGE_FILES = {
-  1: "fish_reaction.png",
-  2: "fish_reaction.png",
-  3: "fish_reaction.png",
-  4: "fish_reaction.png",
-  5: "fish_reaction.png",
+  0: "reaction2.PNG",
+  1: "reaction2.PNG",
+  2: "reaction2.PNG",
+  3: "reaction2.PNG",
+  4: "reaction3.png",
+  5: "reaction3.png",
 };
 
 function reactionAssetUrl(file) {
   return chrome.runtime.getURL(`assets/fish/${file}`);
 }
 
+// Separate from phaseForLength() (which drives the sass comment and never
+// returns 0) so the empty-composer state can have its own reaction art
+// without disturbing sass's phase-1-is-the-resting-state behavior.
+function reactionPhaseForLength(len) {
+  return len === 0 ? 0 : phaseForLength(len);
+}
+
 let currentState = null; // last real state from the backend (bucket)
-let lastPhase = 0; // last typing-length phase rendered (fish + sass)
+let lastPhase = 0; // last typing-length phase rendered (sass)
+let lastReactionPhase = -1; // last reaction phase rendered (fish); -1 so phase 0 still renders once
 let lastComment = "";
 
 // On/off toggle from the popup, persisted so it survives across tabs/reloads.
@@ -122,6 +133,12 @@ function digitAssetUrl(digit) {
   return chrome.runtime.getURL(`assets/numbers/${digit}.PNG`);
 }
 
+// Two separate elements, deliberately: the fishbowl image floats in the
+// gap to the LEFT of the composer (mirrors positionFish()'s gap on the
+// right), while the "X prompts left" line sits on its own line UNDER the
+// composer. They used to be one stacked container; splitting them apart
+// is what lets each sit where it visually belongs instead of dragging
+// the other along with it.
 function injectBucket() {
   if (document.getElementById("water-tracker-bucket")) return;
 
@@ -135,21 +152,29 @@ function injectBucket() {
         <span style="font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">ml used</span>
       </div>
     </div>
-    <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
   `;
   Object.assign(container.style, {
     position: "fixed",
-    // top/left/height set live by positionBucket() — see below
+    // top/left set live by positionBucket() — see below
     zIndex: 50,
     padding: "8px",
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "6px",
     boxSizing: "border-box",
   });
   document.body.appendChild(container);
+
+  const readout = document.createElement("div");
+  readout.id = "water-readout";
+  Object.assign(readout.style, {
+    position: "fixed",
+    // top/left set live by positionReadout() — see below
+    zIndex: 50,
+    font: "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    color: "#2a5f8f",
+  });
+  document.body.appendChild(readout);
 }
 
 const BUCKET_GAP_BELOW_COMPOSER = 12;
@@ -161,22 +186,40 @@ function positionBucket() {
   const composerRect = anchorRectFor(composer);
   if (!composerRect) return;
 
+  // Centered in the gap to the LEFT of the composer. On the left there's
+  // a sidebar occupying real screen space, so the equivalent gap is
+  // bounded by the SIDEBAR's right edge, not the viewport's raw left
+  // edge (0) — using 0 would place this on top of/inside the sidebar
+  // whenever it's open.
+  const sidebar = document.querySelector("aside.dframe-sidebar");
+  const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
+  const gapCenter = (leftBoundary + composerRect.left) / 2;
+  const width = container.offsetWidth || 160;
+
+  container.style.left = `${gapCenter - width / 2}px`;
+  container.style.top = `${composerRect.top + composerRect.height / 2 - container.offsetHeight / 2}px`;
+}
+
+function positionReadout() {
+  const readout = document.getElementById("water-readout");
+  const composer = findComposer();
+  if (!readout || !composer) return;
+  const composerRect = anchorRectFor(composer);
+  if (!composerRect) return;
+
   // Below the composer, left-aligned with its own left edge — same in
   // both a new chat (composer centered) and an established one (docked
   // bottom), since it's always relative to composerRect regardless of
-  // where that rect currently sits on screen. Height is the widget's own
-  // natural size now (image + text), no longer artificially spanned/
-  // capped — that was only needed for the earlier beside-the-composer
-  // layout, which this replaces.
-  container.style.top = `${composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER}px`;
-  container.style.left = `${composerRect.left}px`;
-  container.style.height = "";
+  // where that rect currently sits on screen.
+  readout.style.top = `${composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER}px`;
+  readout.style.left = `${composerRect.left}px`;
 }
 
 let bucketPositionLoopActive = false;
 function bucketPositionLoop() {
   if (!bucketPositionLoopActive) return;
   positionBucket();
+  positionReadout();
   requestAnimationFrame(bucketPositionLoop);
 }
 function startBucketPositionLoop() {
@@ -262,6 +305,10 @@ function injectFish() {
     zIndex: 50,
     width: "150px",
     height: "150px",
+    // reaction2/reaction3 are different native pixel sizes and aspect
+    // ratios — "contain" keeps both rendering at the same box size
+    // without stretching either one's proportions to fill it.
+    objectFit: "contain",
     display: "none",
   });
   document.body.appendChild(el);
@@ -270,7 +317,7 @@ function injectFish() {
 function renderFishPlaceholder(phase) {
   const el = document.getElementById("water-fish");
   if (!el) return;
-  const file = REACTION_PHASE_IMAGE_FILES[phase] || REACTION_PHASE_IMAGE_FILES[1];
+  const file = REACTION_PHASE_IMAGE_FILES[phase] ?? REACTION_PHASE_IMAGE_FILES[0];
   el.src = reactionAssetUrl(file);
 }
 
@@ -380,6 +427,7 @@ function stopPositionLoop() {
 // resting state is phase 1, not hidden. See phaseForLength().
 function hidePhaseUI() {
   lastPhase = 0;
+  lastReactionPhase = -1;
   lastComment = "";
   stopPositionLoop();
   const fish = document.getElementById("water-fish");
@@ -402,7 +450,12 @@ function updatePhaseUI(len, composer) {
     lastPhase = phase;
     const options = SASS_PHASES[phase] || [];
     lastComment = options[Math.floor(Math.random() * options.length)] || "";
-    renderFishPlaceholder(phase);
+  }
+
+  const reactionPhase = reactionPhaseForLength(len);
+  if (reactionPhase !== lastReactionPhase) {
+    lastReactionPhase = reactionPhase;
+    renderFishPlaceholder(reactionPhase);
   }
 
   const fish = document.getElementById("water-fish");
@@ -448,9 +501,11 @@ function teardownAll() {
   lastPhase = 0;
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");
+  const readout = document.getElementById("water-readout");
   const fish = document.getElementById("water-fish");
   const sass = document.getElementById("water-sass");
   if (bucket) bucket.remove();
+  if (readout) readout.remove();
   if (fish) fish.remove();
   if (sass) sass.remove();
 }

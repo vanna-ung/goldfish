@@ -39,6 +39,10 @@ const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
 // two lines don't sit exactly flush.
 const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
+// Baseline (and spread) for fish px/sec — faster than spawnSwimmer()'s
+// own default, which lobster still uses unchanged. Also used by the
+// game-overlay backdrop's fish in games.js, so both look consistent.
+const AQUARIUM_FISH_SPEED_RANGE = [40, 75];
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
 const AQUARIUM_BUBBLE_TARGET = 10;
@@ -398,7 +402,7 @@ function positionGlassPanel() {
 // a straight line. Shared by both creature types via `topRange`, which
 // is the only thing that differs — lobster stays confined to the bottom
 // fourth (bottom-dwelling), fish roam the fuller water column.
-function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
+function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 55], container }) {
   const water = container || document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
@@ -418,7 +422,7 @@ function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
   const containerWidth = water.clientWidth || 400;
   let goingRight = Math.random() < 0.5;
   let x = goingRight ? -size : containerWidth + size;
-  const speed = 20 + Math.random() * 35; // px/sec
+  const speed = speedRange[0] + Math.random() * (speedRange[1] - speedRange[0]); // px/sec
   const willReverse = Math.random() < 0.35; // some turn around mid-swim
   const reverseX = containerWidth * (0.3 + Math.random() * 0.4);
   let hasReversed = false;
@@ -454,7 +458,13 @@ function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
 }
 
 function spawnFish() {
-  spawnSwimmer({ files: AQUARIUM_FISH_FILES, dataAttr: "aquariumFish", sizeRange: [56, 96], topRange: [15, 85] });
+  spawnSwimmer({
+    files: AQUARIUM_FISH_FILES,
+    dataAttr: "aquariumFish",
+    sizeRange: [56, 96],
+    topRange: [15, 85],
+    speedRange: AQUARIUM_FISH_SPEED_RANGE,
+  });
 }
 
 function spawnLobster() {

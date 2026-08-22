@@ -192,9 +192,17 @@ function maintainBackdropCreatures() {
   if (typeof spawnSwimmer !== "function" || typeof spawnBubble !== "function") return;
 
   const fishFiles = typeof AQUARIUM_FISH_FILES !== "undefined" ? AQUARIUM_FISH_FILES : ["fish1.PNG"];
+  const fishSpeedRange = typeof AQUARIUM_FISH_SPEED_RANGE !== "undefined" ? AQUARIUM_FISH_SPEED_RANGE : undefined;
   const currentFish = el.querySelectorAll('[data-aquarium-fish="true"]').length;
   for (let i = currentFish; i < BACKDROP_FISH_TARGET; i++) {
-    spawnSwimmer({ files: fishFiles, dataAttr: "aquariumFish", sizeRange: [40, 70], topRange: [10, 75], container: el });
+    spawnSwimmer({
+      files: fishFiles,
+      dataAttr: "aquariumFish",
+      sizeRange: [40, 70],
+      topRange: [10, 75],
+      speedRange: fishSpeedRange,
+      container: el,
+    });
   }
   const currentBubbles = el.querySelectorAll('[data-aquarium-bubble="true"]').length;
   for (let i = currentBubbles; i < BACKDROP_BUBBLE_TARGET; i++) {

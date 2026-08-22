@@ -8,7 +8,7 @@ Chrome extension that tracks the water cost of AI prompts, sets a daily prompt l
 1. Go to `chrome://extensions`
 2. Enable **Developer mode** (top right)
 3. Click **Load unpacked**, select this folder
-4. Open [claude.ai](https://claude.ai), [gemini.google.com](https://gemini.google.com/), or [chatgpt.com](https://chatgpt.com/) open DevTools console, confirm `[water] injected` appears
+4. Open [claude.ai](https://claude.ai), [gemini.google.com](https://gemini.google.com/), or [chatgpt.com](https://chatgpt.com/), then open DevTools console, confirm `[water] injected` appears
 
 After any code change: click the reload icon on the extension card in `chrome://extensions`, then refresh the claude.ai tab.
 

@@ -39,10 +39,16 @@ const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
 // two lines don't sit exactly flush.
 const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
-// Baseline (and spread) for fish px/sec — faster than spawnSwimmer()'s
-// own default, which lobster still uses unchanged. Also used by the
-// game-overlay backdrop's fish in games.js, so both look consistent.
-const AQUARIUM_FISH_SPEED_RANGE = [40, 75];
+// Each fish is either original pace (spawnSwimmer()'s own default,
+// which lobster still uses unchanged) or the faster pace requested
+// afterward — a 50/50 mix rather than every fish moving uniformly
+// faster. Also used by the game-overlay backdrop's fish in games.js.
+const AQUARIUM_FISH_SPEED_RANGE_SLOW = [20, 55];
+const AQUARIUM_FISH_SPEED_RANGE_FAST = [40, 75];
+
+function pickFishSpeedRange() {
+  return Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+}
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
 const AQUARIUM_BUBBLE_TARGET = 10;
@@ -463,7 +469,7 @@ function spawnFish() {
     dataAttr: "aquariumFish",
     sizeRange: [56, 96],
     topRange: [15, 85],
-    speedRange: AQUARIUM_FISH_SPEED_RANGE,
+    speedRange: pickFishSpeedRange(),
   });
 }
 

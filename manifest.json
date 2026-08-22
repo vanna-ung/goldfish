@@ -10,6 +10,12 @@
     "https://chat.openai.com/*",
     "https://gemini.google.com/*"
   ],
+  "icons": {
+    "16": "assets/fish/icon.PNG",
+    "32": "assets/fish/icon.PNG",
+    "48": "assets/fish/icon.PNG",
+    "128": "assets/fish/icon.PNG"
+  },
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
@@ -28,7 +34,15 @@
       "run_at": "document_idle"
     }
   ],
-  "action": { "default_popup": "popup.html" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/fish/icon.PNG",
+      "32": "assets/fish/icon.PNG",
+      "48": "assets/fish/icon.PNG",
+      "128": "assets/fish/icon.PNG"
+    }
+  },
   "web_accessible_resources": [
     {
       "resources": ["assets/fish/*", "assets/numbers/*", "assets/aquarium/*", "assets/usage/*"],

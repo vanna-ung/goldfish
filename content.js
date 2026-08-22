@@ -368,9 +368,12 @@ function updateBucket(state) {
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
+  // Denominator is the configured daily cap alone (baseCap), not
+  // state.cap (which includes any earned bonus) — a bonus prompt should
+  // still read as "x/10", not inflate the denominator to "x/12".
   readout.innerHTML = state.capped
     ? "Play the game to get another prompt!"
-    : `<strong>${state.remaining}</strong>/${state.cap} prompts left today`;
+    : `<strong>${state.remaining}</strong>/${state.baseCap ?? state.cap} prompts left today`;
 
   setUsageStage(usageStageFor(state.totalPromptsSent));
 

@@ -444,17 +444,10 @@ function maintainFishPopulation() {
     return;
   }
 
-  // Target scales down two ways: the typing-length phase (how big is the
-  // prompt being composed right now) AND the daily remaining fraction
-  // (how much of today's budget is left) — the tank should look sparser
-  // as the day's prompts get used up, not just react to what's currently
-  // being typed.
-  const remainingFraction =
-    typeof currentState !== "undefined" && currentState && currentState.cap
-      ? Math.max(0, Math.min(1, currentState.remaining / currentState.cap))
-      : 1;
-  const baseTarget = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
-  const target = Math.round(baseTarget * remainingFraction);
+  // Target tracks the water level (AQUARIUM_WATER_TOP_BY_PHASE, via
+  // aquariumPhase()) — not the daily prompt count. The lower the water,
+  // the fewer fish.
+  const target = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
 
   // Spawns the whole deficit at once rather than one per tick — with a
   // 3s tick and a target of 10, one-at-a-time meant up to ~30s to reach

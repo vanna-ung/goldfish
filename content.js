@@ -690,6 +690,34 @@ function schedulePreview(composer) {
   }, 150);
 }
 
+// ---- Typing speed (read by aquarium.js's pickFishSpeedRange — "the
+// faster you type, the faster the fish start to swim") ----
+// Smoothed (exponential moving average) chars/sec between keystrokes,
+// not the raw instantaneous gap — one slow key in a fast burst
+// shouldn't read as "typing slowed down." Gaps over 2s are treated as a
+// pause rather than slow typing and don't feed the average at all.
+let typingCharsPerSec = 0;
+let lastKeystrokeAt = 0;
+
+function recordKeystroke() {
+  const now = Date.now();
+  if (lastKeystrokeAt > 0) {
+    const dt = (now - lastKeystrokeAt) / 1000;
+    if (dt > 0 && dt < 2) {
+      typingCharsPerSec = typingCharsPerSec * 0.7 + (1 / dt) * 0.3;
+    }
+  }
+  lastKeystrokeAt = now;
+}
+
+// Decays to 0 once typing has actually stopped (not just between two
+// keystrokes) — otherwise a fast burst would keep boosting fish spawned
+// long after the user paused.
+function currentTypingSpeed() {
+  if (lastKeystrokeAt === 0 || Date.now() - lastKeystrokeAt > 3000) return 0;
+  return typingCharsPerSec;
+}
+
 document.addEventListener("keydown", (e) => {
   if (!extensionEnabled) return;
   if (e.key !== "Enter" || e.shiftKey) return;
@@ -701,6 +729,7 @@ document.addEventListener("input", (e) => {
   if (!extensionEnabled) return;
   const composer = e.target.closest(CONFIG.composerSelector);
   if (!composer) return;
+  recordKeystroke();
   schedulePreview(composer);
 });
 

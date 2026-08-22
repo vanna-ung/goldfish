@@ -46,8 +46,19 @@ const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 16, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_FISH_SPEED_RANGE_SLOW = [20, 55];
 const AQUARIUM_FISH_SPEED_RANGE_FAST = [40, 75];
 
+// "The faster you type, the faster the fish start to swim" — content.js
+// tracks a smoothed chars/sec rate (currentTypingSpeed()); a brisk typist
+// (~8 chars/sec) maxes out a +60% boost on whichever base range was
+// picked, applied once at spawn time rather than continuously re-speeding
+// fish already swimming. Not typing (or paused) is a 1x, unboosted spawn.
+const TYPING_SPEED_FISH_BOOST_MAX = 0.6;
+const TYPING_SPEED_FOR_MAX_BOOST = 8; // chars/sec
+
 function pickFishSpeedRange() {
-  return Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+  const base = Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+  const rate = typeof currentTypingSpeed === "function" ? currentTypingSpeed() : 0;
+  const boost = 1 + Math.min(1, rate / TYPING_SPEED_FOR_MAX_BOOST) * TYPING_SPEED_FISH_BOOST_MAX;
+  return [base[0] * boost, base[1] * boost];
 }
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target

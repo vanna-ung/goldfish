@@ -25,8 +25,12 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // own height, not the viewport.
 const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 10, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
+const AQUARIUM_LOBSTER_TARGET = 3;
 const AQUARIUM_BUBBLE_TARGET = 10;
-const AQUARIUM_FISH_VARIANTS = 3; // fish1.PNG..fish3.PNG
+// Pufferfish shares the same pool/behavior as the regular fish — just
+// another variant that can get picked, not a separate creature type.
+const AQUARIUM_FISH_FILES = ["fish1.PNG", "fish2.PNG", "fish3.PNG", "pufferfish.PNG"];
+const AQUARIUM_LOBSTER_FILES = ["lobster.PNG"];
 const AQUARIUM_BUBBLE_VARIANTS = 4; // bubble1.PNG..bubble4.PNG
 
 // Cached per chat-main element (see findChatMain) rather than read once at
@@ -222,6 +226,14 @@ function injectAquarium() {
   return true;
 }
 
+// No stable selector/testid on this one — found the same way it was
+// verified live, by its text content.
+function findDisclaimerText(main) {
+  return [...main.querySelectorAll("*")].find(
+    (el) => el.children.length === 0 && /double-check responses/i.test(el.textContent || "")
+  );
+}
+
 function teardownAquarium() {
   const main = findChatMain();
   if (!main) return;
@@ -230,6 +242,63 @@ function teardownAquarium() {
   if (aquariumOriginalBg.has(main)) {
     main.style.backgroundColor = aquariumOriginalBg.get(main);
   }
+
+  const disclaimerText = findDisclaimerText(main);
+  if (disclaimerText) {
+    const wrapper = disclaimerText.parentElement;
+    if (wrapper && aquariumOriginalBg.has(wrapper)) {
+      wrapper.style.backgroundColor = aquariumOriginalBg.get(wrapper);
+    }
+    delete disclaimerText.dataset.aquariumGlassPill;
+    Object.assign(disclaimerText.style, {
+      display: "",
+      padding: "",
+      borderRadius: "",
+      backdropFilter: "",
+      WebkitBackdropFilter: "",
+      background: "",
+      boxShadow: "",
+    });
+  }
+}
+
+// The disclaimer text ("Claude is AI and can make mistakes...") sits in a
+// wrapper with its own opaque bg-surface-1 background — verified live —
+// which was blocking the water from showing through underneath it, the
+// one gap left even after clearing `main`'s own background. Clears that
+// wrapper's background the same way `main`'s was cleared, then styles the
+// text itself as a pill-shaped liquid-glass badge (same blur/saturate/
+// highlight treatment as the main glass panel) so it stays legible
+// sitting directly on the water.
+function maintainDisclaimerGlass() {
+  const main = findChatMain();
+  if (!main) return;
+  const disclaimerText = findDisclaimerText(main);
+  if (!disclaimerText) return;
+
+  const wrapper = disclaimerText.parentElement;
+  if (wrapper) {
+    const currentBg = window.getComputedStyle(wrapper).backgroundColor;
+    if (currentBg !== "rgba(0, 0, 0, 0)" && currentBg !== "transparent") {
+      if (!aquariumOriginalBg.has(wrapper)) {
+        aquariumOriginalBg.set(wrapper, currentBg);
+      }
+      wrapper.style.backgroundColor = "transparent";
+    }
+  }
+
+  if (disclaimerText.dataset.aquariumGlassPill === "true") return; // already styled
+  disclaimerText.dataset.aquariumGlassPill = "true";
+  Object.assign(disclaimerText.style, {
+    display: "inline-block",
+    padding: "4px 14px",
+    borderRadius: "9999px",
+    backdropFilter: "blur(28px) saturate(110%)",
+    WebkitBackdropFilter: "blur(28px) saturate(110%)",
+    background: "rgba(255,255,255,0.5)",
+    boxShadow:
+      "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 4px 16px rgba(20,60,90,0.12)",
+  });
 }
 
 function updateAquariumWaterLevel() {
@@ -265,26 +334,28 @@ function positionGlassPanel() {
   glass.style.width = `${rect.width}px`;
 }
 
-// ---- Swimming fish ----
-// Real art: assets/aquarium/fish1.PNG..fish3.PNG. Each fish gets its own
-// independent requestAnimationFrame loop (not a CSS keyframe) so it can
-// pick a random speed and optionally reverse direction partway across,
-// rather than always crossing edge-to-edge in a straight line.
-
-function spawnFish() {
+// ---- Swimming creatures (fish + lobster) ----
+// Real art: assets/aquarium/fish1-3.PNG, pufferfish.PNG (all one pool —
+// pufferfish is a variant, not a separate creature), lobster.PNG. Each
+// gets its own independent requestAnimationFrame loop (not a CSS
+// keyframe) so it can pick a random speed and optionally reverse
+// direction partway across, rather than always crossing edge-to-edge in
+// a straight line. Shared by both creature types via `topRange`, which
+// is the only thing that differs — lobster stays confined to the bottom
+// fourth (bottom-dwelling), fish roam the fuller water column.
+function spawnSwimmer({ files, dataAttr, sizeRange, topRange }) {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
   const img = document.createElement("img");
-  const variant = 1 + Math.floor(Math.random() * AQUARIUM_FISH_VARIANTS);
-  img.src = aquariumAssetUrl(`fish${variant}.PNG`);
-  img.dataset.aquariumFish = "true";
-  const size = 56 + Math.random() * 40;
+  img.src = aquariumAssetUrl(files[Math.floor(Math.random() * files.length)]);
+  img.dataset[dataAttr] = "true";
+  const size = sizeRange[0] + Math.random() * (sizeRange[1] - sizeRange[0]);
   img.width = size;
   img.height = size;
   Object.assign(img.style, {
     position: "absolute",
-    top: `${15 + Math.random() * 70}%`,
+    top: `${topRange[0] + Math.random() * (topRange[1] - topRange[0])}%`,
     pointerEvents: "none",
   });
   water.appendChild(img);
@@ -293,7 +364,7 @@ function spawnFish() {
   let goingRight = Math.random() < 0.5;
   let x = goingRight ? -size : containerWidth + size;
   const speed = 20 + Math.random() * 35; // px/sec
-  const willReverse = Math.random() < 0.35; // some fish turn around mid-swim
+  const willReverse = Math.random() < 0.35; // some turn around mid-swim
   const reverseX = containerWidth * (0.3 + Math.random() * 0.4);
   let hasReversed = false;
 
@@ -327,6 +398,15 @@ function spawnFish() {
   requestAnimationFrame(step);
 }
 
+function spawnFish() {
+  spawnSwimmer({ files: AQUARIUM_FISH_FILES, dataAttr: "aquariumFish", sizeRange: [56, 96], topRange: [15, 85] });
+}
+
+function spawnLobster() {
+  // Bottom fourth of the water column.
+  spawnSwimmer({ files: AQUARIUM_LOBSTER_FILES, dataAttr: "aquariumLobster", sizeRange: [48, 80], topRange: [75, 95] });
+}
+
 function maintainFishPopulation() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
@@ -343,6 +423,19 @@ function maintainFishPopulation() {
   const target = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
   const current = water.querySelectorAll('[data-aquarium-fish="true"]').length;
   for (let i = current; i < target; i++) spawnFish();
+}
+
+function maintainLobsterPopulation() {
+  const water = document.querySelector("#water-aquarium #aquarium-water");
+  if (!water) return;
+
+  if (isEstablishedChat()) {
+    water.querySelectorAll('[data-aquarium-lobster="true"]').forEach((l) => l.remove());
+    return;
+  }
+
+  const current = water.querySelectorAll('[data-aquarium-lobster="true"]').length;
+  for (let i = current; i < AQUARIUM_LOBSTER_TARGET; i++) spawnLobster();
 }
 
 // ---- Rising bubbles ----
@@ -419,8 +512,10 @@ setInterval(() => {
   if (!freshlyInjected) updateAquariumWaterLevel();
   positionGlassPanel();
   maintainFishPopulation();
+  maintainLobsterPopulation();
   maintainBubblePopulation();
   maintainSeaweedVisibility();
+  maintainDisclaimerGlass();
 }, 3000);
 
 // First paint doesn't wait for the interval's first tick.
@@ -428,8 +523,10 @@ if (aquariumIsEnabled()) {
   injectAquarium();
   positionGlassPanel();
   maintainFishPopulation();
+  maintainLobsterPopulation();
   maintainBubblePopulation();
   maintainSeaweedVisibility();
+  maintainDisclaimerGlass();
 }
 
 console.log("[aquarium] injected");

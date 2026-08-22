@@ -25,7 +25,8 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // own height, not the viewport.
 const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 10, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
-const AQUARIUM_LOBSTER_TARGET = 3;
+const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
+const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
 const AQUARIUM_BUBBLE_TARGET = 10;
 // Pufferfish shares the same pool/behavior as the regular fish — just
 // another variant that can get picked, not a separate creature type.
@@ -85,21 +86,26 @@ function injectAquariumStyles() {
 // Real art: assets/aquarium/sand.PNG. Sits at the very bottom of the
 // water, tiled across the full width; seaweed is injected after it (see
 // injectAquarium) so it layers on top of the sand rather than under it.
+const SAND_LAYERS = 3;
+const SAND_LAYER_HEIGHT = 40;
+
 function injectSand(water) {
-  const sand = document.createElement("div");
-  sand.id = "aquarium-sand";
-  Object.assign(sand.style, {
-    position: "absolute",
-    left: "0",
-    right: "0",
-    bottom: "0",
-    height: "40px",
-    backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
-    backgroundRepeat: "repeat-x",
-    backgroundSize: "80px 40px",
-    backgroundPosition: "bottom",
-  });
-  water.appendChild(sand);
+  for (let i = 0; i < SAND_LAYERS; i++) {
+    const sand = document.createElement("div");
+    sand.className = "aquarium-sand-layer";
+    Object.assign(sand.style, {
+      position: "absolute",
+      left: "0",
+      right: "0",
+      bottom: `${i * SAND_LAYER_HEIGHT}px`,
+      height: `${SAND_LAYER_HEIGHT}px`,
+      backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
+      backgroundRepeat: "repeat-x",
+      backgroundSize: `80px ${SAND_LAYER_HEIGHT}px`,
+      backgroundPosition: "bottom",
+    });
+    water.appendChild(sand);
+  }
 }
 
 // ---- Seaweed ----
@@ -471,7 +477,11 @@ function maintainLobsterPopulation() {
   }
 
   const current = water.querySelectorAll('[data-aquarium-lobster="true"]').length;
-  for (let i = current; i < AQUARIUM_LOBSTER_TARGET; i++) spawnLobster();
+  // Below target doesn't mean it spawns — rolled separately each tick so
+  // lobsters feel like an occasional sighting, not a steady presence.
+  if (current < AQUARIUM_LOBSTER_TARGET && Math.random() < AQUARIUM_LOBSTER_SPAWN_CHANCE) {
+    spawnLobster();
+  }
 }
 
 // ---- Rising bubbles ----

@@ -81,6 +81,27 @@ function injectAquariumStyles() {
   document.head.appendChild(style);
 }
 
+// ---- Sand ----
+// Real art: assets/aquarium/sand.PNG. Sits at the very bottom of the
+// water, tiled across the full width; seaweed is injected after it (see
+// injectAquarium) so it layers on top of the sand rather than under it.
+function injectSand(water) {
+  const sand = document.createElement("div");
+  sand.id = "aquarium-sand";
+  Object.assign(sand.style, {
+    position: "absolute",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    height: "40px",
+    backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
+    backgroundRepeat: "repeat-x",
+    backgroundSize: "80px 40px",
+    backgroundPosition: "bottom",
+  });
+  water.appendChild(sand);
+}
+
 // ---- Seaweed ----
 // Real art: assets/aquarium/seaweed1.PNG, seaweed2.PNG — four fronds,
 // evenly spaced along the bottom, each alternating between the two
@@ -173,7 +194,8 @@ function injectAquarium() {
   });
   layer.appendChild(water);
 
-  injectSeaweed(water);
+  injectSand(water);
+  injectSeaweed(water); // appended after sand, so it layers on top of it
 
   // Liquid-glass panel: a frosted strip sitting ON TOP of the water (and
   // the fish/bubbles inside it) but BEHIND the real chat text — it's a
@@ -332,6 +354,11 @@ function positionGlassPanel() {
   glass.style.display = "block";
   glass.style.left = `${rect.left - layerRect.left}px`;
   glass.style.width = `${rect.width}px`;
+  // Stops at the composer's own bottom edge rather than main's — the
+  // disclaimer below it already has its own separate pill-glass treatment
+  // (see maintainDisclaimerGlass), so the big panel shouldn't also
+  // extend down and overlap that area.
+  glass.style.bottom = `${layerRect.bottom - rect.bottom}px`;
 }
 
 // ---- Swimming creatures (fish + lobster) ----
@@ -417,12 +444,28 @@ function maintainFishPopulation() {
     return;
   }
 
+  // Target scales down two ways: the typing-length phase (how big is the
+  // prompt being composed right now) AND the daily remaining fraction
+  // (how much of today's budget is left) — the tank should look sparser
+  // as the day's prompts get used up, not just react to what's currently
+  // being typed.
+  const remainingFraction =
+    typeof currentState !== "undefined" && currentState && currentState.cap
+      ? Math.max(0, Math.min(1, currentState.remaining / currentState.cap))
+      : 1;
+  const baseTarget = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
+  const target = Math.round(baseTarget * remainingFraction);
+
   // Spawns the whole deficit at once rather than one per tick — with a
   // 3s tick and a target of 10, one-at-a-time meant up to ~30s to reach
   // full population, reading as "barely any fish" right after load.
-  const target = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
   const current = water.querySelectorAll('[data-aquarium-fish="true"]').length;
   for (let i = current; i < target; i++) spawnFish();
+  if (current > target) {
+    [...water.querySelectorAll('[data-aquarium-fish="true"]')]
+      .slice(0, current - target)
+      .forEach((f) => f.remove());
+  }
 }
 
 function maintainLobsterPopulation() {

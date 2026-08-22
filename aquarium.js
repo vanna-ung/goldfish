@@ -74,11 +74,43 @@ function isEstablishedChat() {
   return false;
 }
 
+// Small frosted-glass-look circle, same visual family as the liquid-glass
+// panels elsewhere — a cursor image can't actually blur what's behind it
+// like those panels do (cursors are static), so this is a stand-in look,
+// not literal glass.
+const WATER_CURSOR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">' +
+  '<defs><radialGradient id="g" cx="35%" cy="35%" r="65%">' +
+  '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>' +
+  '<stop offset="60%" stop-color="#7ec8f2" stop-opacity="0.55"/>' +
+  '<stop offset="100%" stop-color="#4a90d9" stop-opacity="0.35"/>' +
+  "</radialGradient></defs>" +
+  '<circle cx="14" cy="14" r="12" fill="url(#g)" stroke="#4a90d9" stroke-width="1.5"/>' +
+  "</svg>";
+const WATER_CURSOR_URL = `data:image/svg+xml,${encodeURIComponent(WATER_CURSOR_SVG)}`;
+
 function injectAquariumStyles() {
   if (document.getElementById("aquarium-style")) return;
   const style = document.createElement("style");
   style.id = "aquarium-style";
-  style.textContent = ``;
+  style.textContent = `
+    /* Glass-circle cursor over the water — main.dframe-content is where
+       the aquarium lives, so this is scoped there rather than page-wide.
+       Cursor is inherited by descendants, so the composer and attach
+       button need explicit resets below (higher specificity via
+       !important — a plain attribute selector like [data-testid=...] is
+       actually LOWER specificity than "main.dframe-content", so without
+       this the reset would silently lose to the rule above regardless of
+       DOM nesting or source order). */
+    main.dframe-content {
+      cursor: url("${WATER_CURSOR_URL}") 14 14, auto;
+    }
+    main.dframe-content [data-testid="chat-input"],
+    main.dframe-content [data-testid="chat-input-attach"],
+    main.dframe-content [data-testid="file-upload"] {
+      cursor: auto !important;
+    }
+  `;
   document.head.appendChild(style);
 }
 

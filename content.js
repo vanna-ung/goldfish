@@ -200,7 +200,31 @@ function positionBucket() {
   container.style.top = `${composerRect.top + composerRect.height / 2 - container.offsetHeight / 2}px`;
 }
 
+// While a game screen is up, games.js takes over the readout's styling
+// and position (heading, centered above the game panel) via
+// setReadoutGameMode(true) — this flag makes positionReadout() below
+// stand down so the two don't fight over the element every frame.
+// games.js calls setReadoutGameMode(false) again once the panel closes.
+let readoutGameMode = false;
+
+function setReadoutGameMode(on) {
+  readoutGameMode = on;
+  const readout = document.getElementById("water-readout");
+  if (!readout) return;
+  if (on) {
+    readout.style.textAlign = "center";
+    readout.style.fontSize = "14px";
+    readout.style.fontWeight = "600";
+  } else {
+    readout.style.textAlign = "";
+    readout.style.fontSize = "12px";
+    readout.style.fontWeight = "";
+    readout.style.width = "";
+  }
+}
+
 function positionReadout() {
+  if (readoutGameMode) return; // games.js positions it above the game panel instead
   const readout = document.getElementById("water-readout");
   const composer = findComposer();
   if (!readout || !composer) return;
@@ -272,7 +296,7 @@ function updateBucket(state) {
   if (!readout) return;
 
   readout.innerHTML = state.capped
-    ? "Bucket empty — earn another prompt"
+    ? "Play the game to get another prompt!"
     : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
 
   const stage = usageStageFor(state.totalPromptsSent);
@@ -295,6 +319,13 @@ function updateBucket(state) {
 
 // ---- Fish placeholder + sass comment (typing-length phase) ----
 
+const DEFAULT_REACTION_SIZE = 150;
+// Per-file display size (box side length, px) — reaction2 reads bigger
+// on screen than reaction3, independent of their native pixel dimensions.
+const REACTION_IMAGE_SIZE = {
+  "reaction2.PNG": 220,
+};
+
 function injectFish() {
   if (document.getElementById("water-fish")) return;
   const el = document.createElement("img");
@@ -303,11 +334,11 @@ function injectFish() {
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
-    width: "150px",
-    height: "150px",
+    width: `${DEFAULT_REACTION_SIZE}px`,
+    height: `${DEFAULT_REACTION_SIZE}px`,
     // reaction2/reaction3 are different native pixel sizes and aspect
-    // ratios — "contain" keeps both rendering at the same box size
-    // without stretching either one's proportions to fill it.
+    // ratios — "contain" keeps each rendering without stretching its own
+    // proportions to fill the (possibly per-file-sized) box.
     objectFit: "contain",
     display: "none",
   });
@@ -319,6 +350,9 @@ function renderFishPlaceholder(phase) {
   if (!el) return;
   const file = REACTION_PHASE_IMAGE_FILES[phase] ?? REACTION_PHASE_IMAGE_FILES[0];
   el.src = reactionAssetUrl(file);
+  const size = REACTION_IMAGE_SIZE[file] ?? DEFAULT_REACTION_SIZE;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
 }
 
 function injectSass() {

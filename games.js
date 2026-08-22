@@ -228,11 +228,9 @@ function injectOverlay() {
     position: "fixed",
     zIndex: "50",
     display: "none",
-    // question box.PNG frames the whole panel, stretched to fill since
-    // it's meant to work as a resizable frame.
-    backgroundImage: `url(${numberAssetUrl(ANSWER_BOX_FILE)})`,
-    backgroundSize: "100% 100%",
-    backgroundRepeat: "no-repeat",
+    background: "#fff",
+    borderRadius: "16px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
     padding: "10px 16px",
     overflow: "auto",
     pointerEvents: "auto",
@@ -276,10 +274,27 @@ function positionOverlay() {
   el.style.top = `${rect.top + (rect.height - height) / 2}px`;
 }
 
+// content.js's "X prompts left" readout doubles as the game screen's
+// heading while a game is up (see setReadoutGameMode() in content.js) —
+// centered above the panel, tracking its width/position every frame
+// alongside positionOverlay() since the panel can resize between games.
+const READOUT_GAP_ABOVE_GAME = 12;
+
+function positionReadoutAboveGame() {
+  const readout = document.getElementById("water-readout");
+  const panel = document.getElementById("water-overlay");
+  if (!readout || !panel) return;
+  const rect = panel.getBoundingClientRect();
+  readout.style.width = `${rect.width}px`;
+  readout.style.left = `${rect.left}px`;
+  readout.style.top = `${rect.top - readout.offsetHeight - READOUT_GAP_ABOVE_GAME}px`;
+}
+
 let overlayPositionLoopActive = false;
 function overlayPositionLoop() {
   if (!overlayPositionLoopActive) return;
   positionOverlay();
+  positionReadoutAboveGame();
   requestAnimationFrame(overlayPositionLoop);
 }
 function startOverlayPositionLoop() {
@@ -314,6 +329,9 @@ function showBackdropAndPanel() {
   startBackdropPositionLoop();
   startOverlayPositionLoop();
 
+  if (typeof setReadoutGameMode === "function") setReadoutGameMode(true);
+  positionReadoutAboveGame();
+
   const composer = findComposer();
   if (composer && document.activeElement === composer) composer.blur();
 
@@ -347,6 +365,7 @@ function showBlockerOnly() {
   stopOverlayPositionLoop();
   positionComposerBlocker();
   startBlockerPositionLoop();
+  if (typeof setReadoutGameMode === "function") setReadoutGameMode(false);
   restoreFishSass();
 }
 
@@ -372,6 +391,7 @@ function hideEverything() {
   stopBackdropPositionLoop();
   stopOverlayPositionLoop();
   stopBlockerPositionLoop();
+  if (typeof setReadoutGameMode === "function") setReadoutGameMode(false);
   restoreFishSass();
 }
 
@@ -407,20 +427,14 @@ function earnPromptAndClose() {
 // spiral. Problem is rendered with the teammate's pixel digit/operator
 // sprites; the answer itself is a plain number input for reliability.
 
-// "question box.PNG" is the visual for the ANSWER slot specifically (the
-// blank you fill in) and, larger, the frame for the whole panel — not a
-// frame around every problem digit. Problem digits/operators render as
-// plain glyphs, no per-tile box.
+// Problem digits/operators render as plain glyphs, no per-tile box.
 const NUMBER_ASSET_FILES = {
   "0": "0.PNG", "1": "1.PNG", "2": "2.PNG", "3": "3.PNG", "4": "4.PNG",
   "5": "5.PNG", "6": "6.PNG", "7": "7.PNG", "8": "8.PNG", "9": "9.PNG",
   x: "x.PNG", "=": "=.PNG",
 };
-const ANSWER_BOX_FILE = "question box.PNG";
 
 function numberAssetUrl(file) {
-  // encodeURIComponent for the "question box.PNG" filename's space — safe
-  // here since `file` is always a bare filename, never contains a slash.
   return chrome.runtime.getURL(`assets/numbers/${encodeURIComponent(file)}`);
 }
 

@@ -123,9 +123,13 @@ function positionBucket() {
 
   // Mirror of positionFish() below — that one centers in the gap to the
   // RIGHT of the composer (composer's right edge to the viewport's right
-  // edge); this centers in the equivalent gap on the LEFT (viewport's
-  // left edge, 0, to the composer's left edge).
-  const gapCenter = composerRect.left / 2;
+  // edge). On the left there's a sidebar occupying real screen space, so
+  // the equivalent gap is bounded by the SIDEBAR's right edge, not the
+  // viewport's raw left edge (0) — using 0 would place this on top of/
+  // inside the sidebar whenever it's open.
+  const sidebar = document.querySelector("aside.dframe-sidebar");
+  const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
+  const gapCenter = (leftBoundary + composerRect.left) / 2;
   const width = container.offsetWidth || 130;
 
   container.style.top = `${composerRect.top + 8}px`;
@@ -173,8 +177,8 @@ function injectFish() {
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
-    width: "48px",
-    height: "48px",
+    width: "150px",
+    height: "150px",
     display: "none",
   });
   document.body.appendChild(el);

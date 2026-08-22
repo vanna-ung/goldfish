@@ -45,8 +45,14 @@ function injectGameStyles() {
     }
     #water-overlay button.primary:disabled { opacity: 0.5; cursor: default; }
     #water-overlay input[type="number"] {
-      width: 80px; font-size: 16px; padding: 6px 8px; border-radius: 6px;
-      border: 1px solid #ccc; text-align: center;
+      width: 32px; height: 32px; font-size: 15px; padding: 0; text-align: center;
+      border: none; background-color: transparent;
+      background-repeat: no-repeat; background-position: center; background-size: contain;
+      -moz-appearance: textfield;
+    }
+    #water-overlay input[type="number"]::-webkit-outer-spin-button,
+    #water-overlay input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none; margin: 0;
     }
   `;
   document.head.appendChild(style);
@@ -150,53 +156,34 @@ function earnPromptAndClose() {
 // spiral. Problem is rendered with the teammate's pixel digit/operator
 // sprites; the answer itself is a plain number input for reliability.
 
-// "question box.PNG" is the tile FRAME every digit/operator sits inside,
-// not a standalone "?" marker — each character renders as its own glyph
-// layered on top of that frame image.
+// "question box.PNG" is the visual for the ANSWER slot specifically (the
+// blank you fill in) — not a frame around every problem digit. Problem
+// digits/operators render as plain glyphs, no per-tile box.
 const NUMBER_ASSET_FILES = {
   "0": "0.PNG", "1": "1.PNG", "2": "2.PNG", "3": "3.PNG", "4": "4.PNG",
   "5": "5.PNG", "6": "6.PNG", "7": "7.PNG", "8": "8.PNG", "9": "9.PNG",
   x: "x.PNG", "=": "=.PNG",
 };
-const NUMBER_TILE_FRAME_FILE = "question box.PNG";
+const ANSWER_BOX_FILE = "question box.PNG";
 
 function numberAssetUrl(file) {
-  // encodeURIComponent for the frame filename's space — safe here since
-  // `file` is always a bare filename, never contains a slash.
+  // encodeURIComponent for the "question box.PNG" filename's space — safe
+  // here since `file` is always a bare filename, never contains a slash.
   return chrome.runtime.getURL(`assets/numbers/${encodeURIComponent(file)}`);
 }
 
 function renderProblemTiles(container, n1, n2) {
   container.innerHTML = "";
-  const frameUrl = numberAssetUrl(NUMBER_TILE_FRAME_FILE);
   const chars = [...String(n1), "x", ...String(n2), "="];
   chars.forEach((ch) => {
     const glyphFile = NUMBER_ASSET_FILES[ch];
     if (!glyphFile) return;
-    const tile = document.createElement("div");
-    Object.assign(tile.style, {
-      position: "relative",
-      width: "32px",
-      height: "32px",
-      backgroundImage: `url(${frameUrl})`,
-      backgroundSize: "contain",
-      backgroundRepeat: "no-repeat",
-      backgroundPosition: "center",
-      flexShrink: "0",
-    });
-    const glyph = document.createElement("img");
-    glyph.src = numberAssetUrl(glyphFile);
-    glyph.alt = ch;
-    Object.assign(glyph.style, {
-      position: "absolute",
-      inset: "0",
-      margin: "auto",
-      width: "65%",
-      height: "65%",
-      objectFit: "contain",
-    });
-    tile.appendChild(glyph);
-    container.appendChild(tile);
+    const img = document.createElement("img");
+    img.src = numberAssetUrl(glyphFile);
+    img.alt = ch;
+    img.width = 24;
+    img.height = 24;
+    container.appendChild(img);
   });
 }
 
@@ -207,9 +194,11 @@ function startMultiplicationGame(root) {
 
   root.innerHTML = `
     <div style="font-size:13px;color:#2a5f8f;">Solve 10 to earn a prompt (<span id="mg-progress">1</span>/${TOTAL_QUESTIONS})</div>
-    <div id="mg-problem" style="display:flex;gap:4px;align-items:center;"></div>
-    <input id="mg-answer" type="number" inputmode="numeric" />
-    <button id="mg-submit" class="primary">Check</button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div id="mg-problem" style="display:flex;gap:4px;align-items:center;"></div>
+      <input id="mg-answer" type="number" inputmode="numeric" />
+      <button id="mg-submit" class="primary">Check</button>
+    </div>
     <div id="mg-feedback" style="font-size:12px;color:#888;min-height:16px;"></div>
   `;
 
@@ -217,6 +206,7 @@ function startMultiplicationGame(root) {
   const progressEl = root.querySelector("#mg-progress");
   const answerEl = root.querySelector("#mg-answer");
   const feedbackEl = root.querySelector("#mg-feedback");
+  answerEl.style.backgroundImage = `url(${numberAssetUrl(ANSWER_BOX_FILE)})`;
 
   function nextQuestion() {
     n1 = 2 + Math.floor(Math.random() * 11); // 2-12

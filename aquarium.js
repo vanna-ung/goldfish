@@ -74,10 +74,60 @@ function injectAquariumStyles() {
   const style = document.createElement("style");
   style.id = "aquarium-style";
   style.textContent = `
-    @keyframes aquarium-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
     @keyframes aquarium-wave-scroll { from { background-position-x: 0; } to { background-position-x: 36px; } }
   `;
   document.head.appendChild(style);
+}
+
+// ---- Seaweed ----
+// Real art: assets/aquarium/seaweed1.PNG, seaweed2.PNG — four fronds,
+// evenly spaced along the bottom, each alternating between the two
+// frames every 2s (the two images ARE the sway, not a CSS animation on
+// top of them). Wrapped in one container so maintainSeaweedVisibility()
+// can show/hide all four as a unit.
+const SEAWEED_COUNT = 4;
+const SEAWEED_SWITCH_INTERVAL_MS = 2000;
+
+function injectSeaweed(water) {
+  const container = document.createElement("div");
+  container.id = "aquarium-seaweed";
+  Object.assign(container.style, { position: "absolute", inset: "0", pointerEvents: "none" });
+
+  for (let i = 0; i < SEAWEED_COUNT; i++) {
+    const frond = document.createElement("img");
+    frond.dataset.seaweedFrame = "1";
+    frond.src = aquariumAssetUrl("seaweed1.PNG");
+    const leftPercent = ((i + 0.5) / SEAWEED_COUNT) * 100; // evenly spaced
+    Object.assign(frond.style, {
+      position: "absolute",
+      bottom: "0",
+      left: `${leftPercent}%`,
+      transform: "translateX(-50%)",
+      width: "48px",
+      height: "48px",
+    });
+    container.appendChild(frond);
+  }
+  water.appendChild(container);
+
+  const intervalId = setInterval(() => {
+    if (!container.isConnected) {
+      clearInterval(intervalId); // aquarium was torn down/replaced — stop instead of leaking
+      return;
+    }
+    container.querySelectorAll("img").forEach((frond) => {
+      const nextFrame = frond.dataset.seaweedFrame === "1" ? "2" : "1";
+      frond.dataset.seaweedFrame = nextFrame;
+      frond.src = aquariumAssetUrl(`seaweed${nextFrame}.PNG`);
+    });
+  }, SEAWEED_SWITCH_INTERVAL_MS);
+}
+
+// Same rule as fish/bubbles — only on a fresh/blank chat, not established.
+function maintainSeaweedVisibility() {
+  const seaweed = document.querySelector("#water-aquarium #aquarium-seaweed");
+  if (!seaweed) return;
+  seaweed.style.display = isEstablishedChat() ? "none" : "block";
 }
 
 // Returns true only when it just created a fresh aquarium (so the caller
@@ -140,19 +190,7 @@ function injectAquarium() {
   });
   water.appendChild(wave);
 
-  for (let i = 0; i < 3; i++) {
-    const frond = document.createElement("div");
-    frond.textContent = "〰️"; // placeholder until real seaweed art lands
-    Object.assign(frond.style, {
-      position: "absolute",
-      bottom: "0",
-      left: `${10 + i * 30}%`,
-      fontSize: "40px",
-      transformOrigin: "50% 100%",
-      animation: `aquarium-sway ${3 + i}s ease-in-out infinite`,
-    });
-    water.appendChild(frond);
-  }
+  injectSeaweed(water);
 
   // Liquid-glass panel: a frosted strip sitting ON TOP of the water (and
   // the fish/bubbles inside it) but BEHIND the real chat text — it's a
@@ -400,6 +438,7 @@ setInterval(() => {
   positionGlassPanel();
   maintainFishPopulation();
   maintainBubblePopulation();
+  maintainSeaweedVisibility();
 }, 3000);
 
 // First paint doesn't wait for the interval's first tick.
@@ -408,6 +447,7 @@ if (aquariumIsEnabled()) {
   positionGlassPanel();
   maintainFishPopulation();
   maintainBubblePopulation();
+  maintainSeaweedVisibility();
 }
 
 console.log("[aquarium] injected");

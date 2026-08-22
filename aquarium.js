@@ -24,8 +24,8 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // drained by one big prompt"). Numbers are top-of-water as a % of main's
 // own height, not the viewport.
 const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 10, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
-const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
-const AQUARIUM_BUBBLE_TARGET = 5;
+const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
+const AQUARIUM_BUBBLE_TARGET = 10;
 const AQUARIUM_FISH_VARIANTS = 3; // fish1.PNG..fish3.PNG
 const AQUARIUM_BUBBLE_VARIANTS = 4; // bubble1.PNG..bubble4.PNG
 
@@ -168,24 +168,29 @@ function injectAquarium() {
     top: "100%", // starts fully drained — see the fill-up animation below
     background: "linear-gradient(180deg, rgba(126,200,242,0.55) 0%, rgba(74,144,217,0.55) 100%)",
     transition: "top 800ms ease",
-    overflow: "hidden",
+    // No overflow:hidden here (unlike `layer`, which still clips at
+    // main's outer bounds) — the wave below straddles ABOVE water's own
+    // top edge on purpose, and water clipping its own children would cut
+    // that crest off, making it look tucked under the blue instead of
+    // riding on top of it.
   });
   layer.appendChild(water);
 
   // Wave strip riding the surface, scrolling left-to-right continuously —
   // a static top edge otherwise reads as a flat pane of glass, not water.
+  // Straddles water's top edge (half above, half below) so it visibly
+  // sits ON the surface rather than being flush with/hidden inside it.
   const wave = document.createElement("div");
   wave.id = "aquarium-wave";
   Object.assign(wave.style, {
     position: "absolute",
     left: "0",
     right: "0",
-    top: "0", // sits on the water surface itself, not straddling above the edge
-    height: "18px",
+    top: "-32px",
+    height: "64px",
     backgroundImage: `url(${aquariumAssetUrl("wave.PNG")})`,
     backgroundRepeat: "repeat-x",
-    backgroundSize: "18px 18px",
-    opacity: "0.85",
+    backgroundSize: "64px 64px",
     animation: "aquarium-wave-scroll 2.5s linear infinite",
   });
   water.appendChild(wave);
@@ -210,14 +215,14 @@ function injectAquarium() {
     bottom: "0",
     display: "none", // positionGlassPanel() turns this on for established chats
     borderRadius: "28px",
-    // Apple "Liquid Glass" approximation: strong blur + saturation boost
-    // (the saturate() is what keeps colors underneath from looking washed
-    // out/gray through the blur), a soft white tint, an inset highlight
-    // along the top/left edge to read as a lit glass rim, and a diffuse
-    // shadow to lift it off the water rather than looking painted on.
-    backdropFilter: "blur(24px) saturate(180%)",
-    WebkitBackdropFilter: "blur(24px) saturate(180%)",
-    background: "rgba(255,255,255,0.22)",
+    // Apple "Liquid Glass" approximation: blur + a much lighter
+    // saturation boost than before — 180% was amplifying the blue water
+    // showing through the blur enough that the panel read as tinted blue
+    // rather than clear. Higher white opacity for the same reason: it
+    // needs to actually neutralize the blue behind it, not just blur it.
+    backdropFilter: "blur(28px) saturate(110%)",
+    WebkitBackdropFilter: "blur(28px) saturate(110%)",
+    background: "rgba(255,255,255,0.5)",
     boxShadow:
       "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
     pointerEvents: "none",
@@ -358,9 +363,12 @@ function maintainFishPopulation() {
     return;
   }
 
+  // Spawns the whole deficit at once rather than one per tick — with a
+  // 3s tick and a target of 10, one-at-a-time meant up to ~30s to reach
+  // full population, reading as "barely any fish" right after load.
   const target = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
   const current = water.querySelectorAll('[data-aquarium-fish="true"]').length;
-  if (current < target) spawnFish();
+  for (let i = current; i < target; i++) spawnFish();
 }
 
 // ---- Rising bubbles ----
@@ -423,7 +431,7 @@ function maintainBubblePopulation() {
   }
 
   const current = water.querySelectorAll('[data-aquarium-bubble="true"]').length;
-  if (current < AQUARIUM_BUBBLE_TARGET) spawnBubble();
+  for (let i = current; i < AQUARIUM_BUBBLE_TARGET; i++) spawnBubble();
 }
 
 injectAquariumStyles();

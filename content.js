@@ -780,7 +780,7 @@ new MutationObserver(() => {
 setTimeout(() => {
   if (extensionEnabled && !findComposer()) {
     console.warn(
-      "[water] composer not found — CONFIG.composerSelector needs updating for the current claude.ai DOM"
+      "[water] composer not found — CONFIG.composerSelector (platform adapter) needs updating for the current DOM"
     );
   }
 }, 5000);

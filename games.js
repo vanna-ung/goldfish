@@ -315,7 +315,9 @@ function stopOverlayPositionLoop() {
 // the fish reaction + sass comment above.
 function setFishbowlVisible(visible) {
   const bucket = document.getElementById("water-tracker-bucket");
+  const usageTracker = document.getElementById("water-usage-tracker");
   if (bucket) bucket.style.display = visible ? "flex" : "none";
+  if (usageTracker) usageTracker.style.display = visible ? "flex" : "none";
 }
 
 function showBackdropAndPanel() {

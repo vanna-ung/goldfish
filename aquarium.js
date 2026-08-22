@@ -23,7 +23,7 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // "still mostly full"); phase 5 = water only in the bottom fifth ("nearly
 // drained by one big prompt"). Numbers are top-of-water as a % of main's
 // own height, not the viewport.
-const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
+const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 20, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -247,7 +247,7 @@ function injectAquarium() {
   water.style.transition = "top 1800ms ease";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0}%`;
+      water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 20}%`;
       setTimeout(() => {
         water.style.transition = "top 800ms ease"; // back to the normal speed for later phase changes
       }, 1800);
@@ -335,7 +335,7 @@ function maintainDisclaimerGlass() {
 function updateAquariumWaterLevel() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
-  water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0}%`;
+  water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 20}%`;
 }
 
 // Glass is only shown on established chats — a blank new chat has no

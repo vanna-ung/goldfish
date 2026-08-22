@@ -72,11 +72,9 @@ const SASS_PHASES = {
 // that reads prompt size; the fishbowl never does.
 //
 // Key 0 is the empty-composer resting state (distinct from phase 1, which
-// starts as soon as the user types anything) — reaction1.png for that
-// isn't drawn yet, so it reuses reaction2.png for now. Swap the "0" entry
-// to "reaction1.png" once that art lands; nothing else needs to change.
+// starts as soon as the user types anything).
 const REACTION_PHASE_IMAGE_FILES = {
-  0: "reaction2.PNG",
+  0: "reaction1.PNG",
   1: "reaction2.PNG",
   2: "reaction2.PNG",
   3: "reaction2.PNG",
@@ -198,18 +196,14 @@ function positionBucket() {
 
   container.style.left = `${gapCenter - width / 2}px`;
 
-  // Rests on top of the aquarium's sand strip (aquarium.js) when it's
-  // there, so the fishbowl reads as part of the scene instead of
-  // floating independently of it. Falls back to vertically centering on
-  // the composer if the aquarium hasn't injected yet (e.g. right at
-  // load, before aquarium.js's own first tick has run).
-  const sand = document.querySelector("#water-aquarium #aquarium-sand");
-  if (sand) {
-    const sandRect = sand.getBoundingClientRect();
-    container.style.top = `${sandRect.top - container.offsetHeight}px`;
-  } else {
-    container.style.top = `${composerRect.top + composerRect.height / 2 - container.offsetHeight / 2}px`;
-  }
+  // Bottom-aligned with the composer's own bottom edge. Tried docking to
+  // the aquarium's sand strip instead, but sand sits at the very bottom
+  // of the visible chat area regardless of where the composer is — fine
+  // for an established chat (composer's already down there too), but it
+  // left the fishbowl stranded well below a NEW chat's vertically
+  // centered composer. Tracking the composer directly keeps it right
+  // where it visually belongs in both layouts.
+  container.style.top = `${composerRect.bottom - container.offsetHeight}px`;
 }
 
 // While a game screen is up, games.js takes over the readout's styling
@@ -256,6 +250,7 @@ function bucketPositionLoop() {
   if (!bucketPositionLoopActive) return;
   positionBucket();
   positionReadout();
+  positionUsageTracker();
   requestAnimationFrame(bucketPositionLoop);
 }
 function startBucketPositionLoop() {
@@ -285,25 +280,73 @@ function setUsageStage(stage) {
   }, 200);
 }
 
-function renderMlUsedDigits(totalPromptsSent) {
-  const digitsEl = document.getElementById("water-usage-cap-digits");
-  if (!digitsEl) return;
-  const ml = (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY;
-  digitsEl.innerHTML = "";
-  String(ml)
+// Shared by both digit displays below — the lifetime cap-note and the
+// daily usage tracker each render a plain integer as a row of the
+// teammate's number sprites.
+function renderDigitSprites(container, number, size) {
+  container.innerHTML = "";
+  String(number)
     .split("")
     .forEach((digit) => {
       const img = document.createElement("img");
       img.src = digitAssetUrl(digit);
-      img.width = 10;
-      img.height = 10;
-      digitsEl.appendChild(img);
+      img.width = size;
+      img.height = size;
+      container.appendChild(img);
     });
+}
+
+function renderMlUsedDigits(totalPromptsSent) {
+  const digitsEl = document.getElementById("water-usage-cap-digits");
+  if (!digitsEl) return;
+  renderDigitSprites(digitsEl, (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY, 10);
+}
+
+// ---- Daily usage tracker (underneath the fishbowl) ----
+// Separate metric from both the daily prompt cap and the lifetime usage
+// fishbowl above: estimates tokens sent ("in") and received back ("out")
+// today from character counts (see estimateTokens() below — no real
+// tokenizer is available client-side), converts that to an "X mL used
+// today" figure (background.js's ML_PER_TOKEN), and resets at midnight
+// along with the rest of the daily entry.
+function injectUsageTracker() {
+  if (document.getElementById("water-usage-tracker")) return;
+  const el = document.createElement("div");
+  el.id = "water-usage-tracker";
+  el.innerHTML = `
+    <span id="water-usage-tracker-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
+    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used today</span>
+  `;
+  Object.assign(el.style, {
+    position: "fixed",
+    // top/left set live by positionUsageTracker() — see below
+    zIndex: 50,
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  });
+  document.body.appendChild(el);
+}
+
+function updateUsageTracker(state) {
+  injectUsageTracker();
+  const digitsEl = document.getElementById("water-usage-tracker-digits");
+  if (digitsEl) renderDigitSprites(digitsEl, state.mlUsedToday ?? 0, 12);
+}
+
+function positionUsageTracker() {
+  const el = document.getElementById("water-usage-tracker");
+  const bucket = document.getElementById("water-tracker-bucket");
+  if (!el || !bucket) return;
+  const rect = bucket.getBoundingClientRect();
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.bottom + 8}px`;
 }
 
 function updateBucket(state) {
   currentState = state;
   injectBucket();
+  updateUsageTracker(state);
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
@@ -562,10 +605,12 @@ function teardownAll() {
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");
   const readout = document.getElementById("water-readout");
+  const usageTracker = document.getElementById("water-usage-tracker");
   const fish = document.getElementById("water-fish");
   const sass = document.getElementById("water-sass");
   if (bucket) bucket.remove();
   if (readout) readout.remove();
+  if (usageTracker) usageTracker.remove();
   if (fish) fish.remove();
   if (sass) sass.remove();
 }
@@ -618,6 +663,13 @@ function composerCharCount(composer) {
 const DEDUPE_WINDOW_MS = 1000;
 let lastRecordedAt = 0;
 
+// Best-known typed length, kept fresh by the "input" listener and the
+// MutationObserver fallback below (not re-read from the composer at
+// send-time) — by the time our listeners run, claude.ai's own send
+// handler may already have cleared the composer, which would make a
+// fresh read come back empty regardless of what was actually sent.
+let currentComposerLen = 0;
+
 function recordPromptIfNotDuped() {
   const now = Date.now();
   if (now - lastRecordedAt < DEDUPE_WINDOW_MS) return;
@@ -625,6 +677,55 @@ function recordPromptIfNotDuped() {
   chrome.runtime.sendMessage({ type: "RECORD_PROMPT" }, (state) => {
     if (chrome.runtime.lastError) return;
     if (state) updateBucket(state);
+  });
+  beginUsageCapture(currentComposerLen);
+}
+
+// ---- Token/mL estimation for the daily usage tracker ----
+// No real tokenizer is available client-side, so both directions use the
+// same rough "~4 characters per token" rule of thumb — good enough for a
+// ballpark mL figure, not meant to be exact.
+function estimateTokens(charCount) {
+  return Math.ceil((charCount || 0) / 4);
+}
+
+// The chat transcript's total text grows by roughly (what the user just
+// sent) + (what Claude replies with) once a response finishes streaming.
+// Snapshotting main's text length right before sending and again once
+// things go quiet, then subtracting the known input length, isolates an
+// estimate of just the reply — without needing a selector for assistant
+// message bubbles specifically, which haven't been verified against the
+// live DOM.
+let pendingUsageCapture = null;
+let usageQuietTimer = null;
+const USAGE_QUIET_MS = 2500; // no chat-area DOM changes for this long = the response finished streaming
+
+function chatTextLength() {
+  const main = typeof findChatMain === "function" ? findChatMain() : null;
+  return ((main || document.body).innerText || "").length;
+}
+
+function beginUsageCapture(inputLen) {
+  pendingUsageCapture = { inputLen, mainLenBefore: chatTextLength() };
+  armUsageQuietTimer();
+}
+
+function armUsageQuietTimer() {
+  if (!pendingUsageCapture) return;
+  clearTimeout(usageQuietTimer);
+  usageQuietTimer = setTimeout(finishUsageCapture, USAGE_QUIET_MS);
+}
+
+function finishUsageCapture() {
+  if (!pendingUsageCapture) return;
+  const { inputLen, mainLenBefore } = pendingUsageCapture;
+  pendingUsageCapture = null;
+  const outputLen = Math.max(0, chatTextLength() - mainLenBefore - inputLen);
+  const tokensIn = estimateTokens(inputLen);
+  const tokensOut = estimateTokens(outputLen);
+  chrome.runtime.sendMessage({ type: "RECORD_USAGE", tokensIn, tokensOut }, (state) => {
+    if (chrome.runtime.lastError) return;
+    if (state) updateUsageTracker(state);
   });
 }
 
@@ -658,6 +759,7 @@ document.addEventListener("input", (e) => {
   if (!extensionEnabled) return;
   const composer = e.target.closest(CONFIG.composerSelector);
   if (!composer) return;
+  currentComposerLen = effectiveTypingLength(composer);
   schedulePreview(composer);
 });
 
@@ -698,6 +800,11 @@ document.addEventListener("mouseout", (e) => {
 let lastObservedLen = -1;
 let mutationScheduled = false;
 new MutationObserver(() => {
+  // Unconditional and undebounced: this is what tells finishUsageCapture()
+  // the response is still streaming, so it needs to see every mutation,
+  // not just the ones that survive the 200ms debounce below.
+  if (pendingUsageCapture) armUsageQuietTimer();
+
   if (mutationScheduled) return;
   mutationScheduled = true;
   setTimeout(() => {
@@ -705,6 +812,7 @@ new MutationObserver(() => {
     if (!extensionEnabled) return;
     const composer = findComposer();
     const len = effectiveTypingLength(composer);
+    currentComposerLen = len;
     if (len === lastObservedLen) return;
     lastObservedLen = len;
     updatePhaseUI(len, composer);

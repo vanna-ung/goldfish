@@ -35,6 +35,9 @@ const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 // overlay (that approach clipped glass's rounded corners and broke the
 // text-behind-glass look — see the reverted injectHeaderPatch()).
 const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
+// Glass sits this many px below wherever water's own top lands, so the
+// two lines don't sit exactly flush.
+const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -373,7 +376,10 @@ function positionGlassPanel() {
 
   const layerRect = layer.getBoundingClientRect();
   glass.style.display = "block";
-  glass.style.top = aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[1]); // aligned with phase-1 water's own level
+  // A few px below water's own top rather than perfectly flush — a hard
+  // seam where the two lines coincided read as a rendering glitch rather
+  // than an intentional glass wall sitting just past the waterline.
+  glass.style.top = `calc(${aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[1])} + ${AQUARIUM_GLASS_EXTRA_TOP_PX}px)`;
   glass.style.left = `${rect.left - layerRect.left}px`;
   glass.style.width = `${rect.width}px`;
   // Stops at the composer's own bottom edge rather than main's — the

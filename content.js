@@ -120,6 +120,8 @@ function injectBucket() {
   document.body.appendChild(container);
 }
 
+const MAX_BUCKET_HEIGHT = 130;
+
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
   const composer = findComposer();
@@ -147,7 +149,14 @@ function positionBucket() {
   const sass = document.getElementById("water-sass");
   const sassHeight = sass && sass.offsetHeight > 0 ? sass.offsetHeight : 24;
   const top = composerRect.top - sassHeight / 2;
-  const height = composerRect.bottom - top;
+  // Capped rather than always spanning to composerRect.bottom — in an
+  // established chat the composer's own box grows taller as the user
+  // types multi-line text (top edge moves up, sass tracks it, so this
+  // widget's top would climb too), and letting height follow that meant
+  // the fishbowl visibly stretched taller along with the prompt box.
+  // Capping at roughly its size for a normal, non-expanded composer keeps
+  // it fixed regardless of how tall typing makes the composer.
+  const height = Math.min(composerRect.bottom - top, MAX_BUCKET_HEIGHT);
 
   container.style.top = `${top}px`;
   container.style.left = `${gapCenter - width / 2}px`;

@@ -46,19 +46,26 @@ const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 16, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_FISH_SPEED_RANGE_SLOW = [20, 55];
 const AQUARIUM_FISH_SPEED_RANGE_FAST = [40, 75];
 
+function pickFishSpeedRange() {
+  return Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+}
+
 // "The faster you type, the faster the fish start to swim" — content.js
-// tracks a smoothed chars/sec rate (currentTypingSpeed()); a brisk typist
-// (~8 chars/sec) maxes out a +60% boost on whichever base range was
-// picked, applied once at spawn time rather than continuously re-speeding
-// fish already swimming. Not typing (or paused) is a 1x, unboosted spawn.
+// tracks a smoothed chars/sec rate (currentTypingSpeed()). Read live, on
+// every animation frame (see spawnSwimmer's step()), not baked into a
+// fish's speed once at spawn time — a fish already swimming visibly
+// speeds up and slows back down as typing speed changes, instead of the
+// boost only ever showing up on the next fish that happens to spawn
+// (which, once the tank's already at its target population, could be a
+// long time after anyone notices they're typing fast). A brisk typist
+// (~8 chars/sec) maxes out a +60% boost; not typing (or paused for a
+// few seconds) is 1x.
 const TYPING_SPEED_FISH_BOOST_MAX = 0.6;
 const TYPING_SPEED_FOR_MAX_BOOST = 8; // chars/sec
 
-function pickFishSpeedRange() {
-  const base = Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+function currentFishTypingBoost() {
   const rate = typeof currentTypingSpeed === "function" ? currentTypingSpeed() : 0;
-  const boost = 1 + Math.min(1, rate / TYPING_SPEED_FOR_MAX_BOOST) * TYPING_SPEED_FISH_BOOST_MAX;
-  return [base[0] * boost, base[1] * boost];
+  return 1 + Math.min(1, rate / TYPING_SPEED_FOR_MAX_BOOST) * TYPING_SPEED_FISH_BOOST_MAX;
 }
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -419,7 +426,7 @@ function positionGlassPanel() {
 // a straight line. Shared by both creature types via `topRange`, which
 // is the only thing that differs — lobster stays confined to the bottom
 // fourth (bottom-dwelling), fish roam the fuller water column.
-function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 55], container }) {
+function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 55], typingBoost = false, container }) {
   const water = container || document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
@@ -455,7 +462,8 @@ function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 
     if (!img.isConnected) return; // removed already (teardown, established chat, etc.)
     const dt = (now - lastTime) / 1000;
     lastTime = now;
-    x += (goingRight ? 1 : -1) * speed * dt;
+    const effectiveSpeed = typingBoost ? speed * currentFishTypingBoost() : speed;
+    x += (goingRight ? 1 : -1) * effectiveSpeed * dt;
 
     if (willReverse && !hasReversed && ((goingRight && x >= reverseX) || (!goingRight && x <= reverseX))) {
       goingRight = !goingRight;
@@ -481,6 +489,7 @@ function spawnFish() {
     sizeRange: [56, 96],
     topRange: [15, 85],
     speedRange: pickFishSpeedRange(),
+    typingBoost: true,
   });
 }
 

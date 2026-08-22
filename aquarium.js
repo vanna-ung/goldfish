@@ -90,29 +90,8 @@ const SAND_LAYERS = 3;
 const SAND_LAYER_HEIGHT = 40;
 
 function injectSand(water) {
-  // sand.PNG is a wavy strip with transparent space above each crest, not
-  // a solid rectangle — confirmed visually (blue water was showing
-  // through between stacked copies even with a 60% overlap). Rather than
-  // guess the exact wave-to-transparent ratio to find a stride that never
-  // gaps, lay a solid sand-colored backdrop first, sized to the full
-  // stacked height — any transparent parts of the wavy tiles on top of it
-  // reveal matching sand color instead of the water, so the stack reads
-  // as solid regardless of the image's actual silhouette.
-  const stride = SAND_LAYER_HEIGHT * 0.6;
-  const totalHeight = SAND_LAYER_HEIGHT + (SAND_LAYERS - 1) * stride;
-
-  const backdrop = document.createElement("div");
-  backdrop.id = "aquarium-sand-backdrop";
-  Object.assign(backdrop.style, {
-    position: "absolute",
-    left: "0",
-    right: "0",
-    bottom: "0",
-    height: `${totalHeight}px`,
-    background: "#e3cf9c",
-  });
-  water.appendChild(backdrop);
-
+  // Re-cropped asset (no white background) — flush stacking, no overlap
+  // or solid-backdrop workaround needed this time.
   for (let i = 0; i < SAND_LAYERS; i++) {
     const sand = document.createElement("div");
     sand.className = "aquarium-sand-layer";
@@ -120,7 +99,7 @@ function injectSand(water) {
       position: "absolute",
       left: "0",
       right: "0",
-      bottom: `${i * stride}px`,
+      bottom: `${i * SAND_LAYER_HEIGHT}px`,
       height: `${SAND_LAYER_HEIGHT}px`,
       backgroundImage: `url(${aquariumAssetUrl("sand.PNG")})`,
       backgroundRepeat: "repeat-x",
@@ -399,8 +378,8 @@ function positionGlassPanel() {
 // a straight line. Shared by both creature types via `topRange`, which
 // is the only thing that differs — lobster stays confined to the bottom
 // fourth (bottom-dwelling), fish roam the fuller water column.
-function spawnSwimmer({ files, dataAttr, sizeRange, topRange }) {
-  const water = document.querySelector("#water-aquarium #aquarium-water");
+function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
+  const water = container || document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
   const img = document.createElement("img");
@@ -511,8 +490,8 @@ function maintainLobsterPopulation() {
 // Real art: assets/aquarium/bubble1.PNG..bubble4.PNG. Rise from the
 // bottom, shrinking as they go.
 
-function spawnBubble() {
-  const water = document.querySelector("#water-aquarium #aquarium-water");
+function spawnBubble(container) {
+  const water = container || document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
   const img = document.createElement("img");

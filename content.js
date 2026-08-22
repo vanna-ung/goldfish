@@ -313,7 +313,7 @@ function injectUsageTracker() {
   el.id = "water-usage-tracker";
   el.innerHTML = `
     <span id="water-usage-tracker-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
-    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used</span>
+    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used today</span>
   `;
   Object.assign(el.style, {
     position: "fixed",

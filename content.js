@@ -710,11 +710,12 @@ function recordKeystroke() {
   lastKeystrokeAt = now;
 }
 
-// Decays to 0 once typing has actually stopped (not just between two
-// keystrokes) — otherwise a fast burst would keep boosting fish spawned
-// long after the user paused.
+// Snaps back to 0 within a second of the last keystroke, not just
+// between two keystrokes — so fish visibly return to normal speed
+// shortly after typing stops, rather than staying boosted from a burst
+// that already ended.
 function currentTypingSpeed() {
-  if (lastKeystrokeAt === 0 || Date.now() - lastKeystrokeAt > 3000) return 0;
+  if (lastKeystrokeAt === 0 || Date.now() - lastKeystrokeAt > 1000) return 0;
   return typingCharsPerSec;
 }
 

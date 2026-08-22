@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Goldfish",
   "version": "0.1.0",
-  "description": "Tracks the water cost of your AI prompts.",
+  "description": "A mindful companion for your AI habit. Prompt less, think more.",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://claude.ai/*"],
   "background": { "service_worker": "background.js" },

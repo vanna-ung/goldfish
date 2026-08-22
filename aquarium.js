@@ -90,12 +90,29 @@ const SAND_LAYERS = 3;
 const SAND_LAYER_HEIGHT = 40;
 
 function injectSand(water) {
-  // Stride is shorter than each layer's own height, so consecutive layers
-  // overlap on purpose — flush (stride == height) still left a visible
-  // gap, almost certainly transparent padding baked into sand.PNG itself
-  // rather than a gap between the elements. Overlapping guarantees no
-  // seam regardless of that padding.
+  // sand.PNG is a wavy strip with transparent space above each crest, not
+  // a solid rectangle — confirmed visually (blue water was showing
+  // through between stacked copies even with a 60% overlap). Rather than
+  // guess the exact wave-to-transparent ratio to find a stride that never
+  // gaps, lay a solid sand-colored backdrop first, sized to the full
+  // stacked height — any transparent parts of the wavy tiles on top of it
+  // reveal matching sand color instead of the water, so the stack reads
+  // as solid regardless of the image's actual silhouette.
   const stride = SAND_LAYER_HEIGHT * 0.6;
+  const totalHeight = SAND_LAYER_HEIGHT + (SAND_LAYERS - 1) * stride;
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "aquarium-sand-backdrop";
+  Object.assign(backdrop.style, {
+    position: "absolute",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    height: `${totalHeight}px`,
+    background: "#e3cf9c",
+  });
+  water.appendChild(backdrop);
+
   for (let i = 0; i < SAND_LAYERS; i++) {
     const sand = document.createElement("div");
     sand.className = "aquarium-sand-layer";

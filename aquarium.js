@@ -393,8 +393,14 @@ function positionGlassPanel() {
   // seam where the two lines coincided read as a rendering glitch rather
   // than an intentional glass wall sitting just past the waterline.
   glass.style.top = `calc(${aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[1])} + ${AQUARIUM_GLASS_EXTRA_TOP_PX}px)`;
-  glass.style.left = `${rect.left - layerRect.left}px`;
-  glass.style.width = `${rect.width}px`;
+  // Per-platform inward padding (GLASS_WIDTH_INSET_PX, default 0) — on
+  // Gemini specifically, the composer's own width doesn't line up with
+  // the wider transcript column, so a glass panel sized exactly to the
+  // composer cuts across message text at its edges instead of sitting
+  // fully behind or fully clear of it.
+  const widthInset = typeof GLASS_WIDTH_INSET_PX !== "undefined" ? GLASS_WIDTH_INSET_PX : 0;
+  glass.style.left = `${rect.left - layerRect.left + widthInset}px`;
+  glass.style.width = `${rect.width - widthInset * 2}px`;
   // Stops at the composer's own bottom edge rather than main's — the
   // disclaimer below it already has its own separate pill-glass treatment
   // (see maintainDisclaimerGlass), so the big panel shouldn't also

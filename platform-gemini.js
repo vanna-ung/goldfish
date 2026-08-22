@@ -88,3 +88,8 @@ const HEADER_HEIGHT_PX = 0;
 // the comment box turns out to cover typed text here too.
 const SASS_BORDER_RADIUS = "9999px";
 const SASS_PADDING = "4px 14px";
+
+// The composer's own width doesn't line up with the wider transcript
+// column here, so a glass panel sized exactly to the composer cuts
+// across message text at its edges. Pulling each side in by 10px.
+const GLASS_WIDTH_INSET_PX = 10;

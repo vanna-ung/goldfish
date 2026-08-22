@@ -21,8 +21,28 @@ async function getTodayEntry() {
   return store[key] ?? { count: 0, bonus: 0 };
 }
 
+// Flat mL-per-prompt for the daily-tracker-turned-universal-tracker
+// widget under the fishbowl — a flat rate per prompt rather than
+// anything length-based, tracked off totalPromptsSent below so it's the
+// same "ever, everywhere" total as the lifetime usage fishbowl.
+const ML_PER_PROMPT_USAGE = 5;
+
+// Lifetime count, never reset — a plain (non-dated) storage key, unlike
+// the daily entries. Drives the usage fishbowl (assets/usage/0-8.PNG)
+// specifically, which is deliberately independent of the daily cap: it's
+// "how much have you used, ever, everywhere" not "how many are left
+// today," so it stays the same across chats and across days.
+async function getTotalPromptsSent() {
+  const { totalPromptsSent } = await chrome.storage.local.get("totalPromptsSent");
+  return totalPromptsSent ?? 0;
+}
+
 async function getState() {
-  const [entry, cap] = await Promise.all([getTodayEntry(), getDailyCap()]);
+  const [entry, cap, totalPromptsSent] = await Promise.all([
+    getTodayEntry(),
+    getDailyCap(),
+    getTotalPromptsSent(),
+  ]);
   // `bonus` is prompts earned today via a minigame — added on top of the
   // configured cap, not saved into it, so it never carries over to
   // tomorrow and never touches the user's actual daily-limit setting.
@@ -35,13 +55,19 @@ async function getState() {
     remaining,
     fraction: effectiveCap > 0 ? remaining / effectiveCap : 0,
     capped: remaining <= 0,
+    totalPromptsSent,
+    mlUsed: totalPromptsSent * ML_PER_PROMPT_USAGE,
   };
 }
 
 async function recordPrompt() {
   const key = todayKey();
   const entry = await getTodayEntry();
-  await chrome.storage.local.set({ [key]: { ...entry, count: entry.count + 1 } });
+  const total = await getTotalPromptsSent();
+  await chrome.storage.local.set({
+    [key]: { ...entry, count: entry.count + 1 },
+    totalPromptsSent: total + 1,
+  });
   return getState();
 }
 

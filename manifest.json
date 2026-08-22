@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Water Tracker",
+  "name": "Goldfish",
   "version": "0.1.0",
   "description": "Tracks the water cost of your AI prompts.",
   "permissions": ["storage", "alarms"],
@@ -16,7 +16,7 @@
   "action": { "default_popup": "popup.html" },
   "web_accessible_resources": [
     {
-      "resources": ["assets/fish/*", "assets/numbers/*", "assets/aquarium/*"],
+      "resources": ["assets/fish/*", "assets/numbers/*", "assets/aquarium/*", "assets/usage/*"],
       "matches": ["https://claude.ai/*"]
     }
   ]

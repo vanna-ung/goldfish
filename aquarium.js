@@ -23,8 +23,32 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // "still mostly full"); phase 5 = water only in the bottom fifth ("nearly
 // drained by one big prompt"). Numbers are top-of-water as a % of main's
 // own height, not the viewport.
-const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 10, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
-const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
+const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
+// claude.ai renders its own sticky-header fade above main's content
+// (measured live: ~72px). It composites against whatever's actually
+// painted behind it, not against main's CSS background property — so on
+// established chats water starts this many px lower than its phase
+// would otherwise put it, letting the fade blend into the plain
+// unmodified background above it exactly like it always did. Not
+// applied to new chats (no title/history there to fade behind, and
+// water should read as genuinely flush with the top) or via a covering
+// overlay (that approach clipped glass's rounded corners and broke the
+// text-behind-glass look — see the reverted injectHeaderPatch()).
+const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
+// Glass sits this many px below wherever water's own top lands, so the
+// two lines don't sit exactly flush.
+const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;
+const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 16, 2: 8, 3: 6, 4: 4, 5: 2 };
+// Each fish is either original pace (spawnSwimmer()'s own default,
+// which lobster still uses unchanged) or the faster pace requested
+// afterward — a 50/50 mix rather than every fish moving uniformly
+// faster. Also used by the game-overlay backdrop's fish in games.js.
+const AQUARIUM_FISH_SPEED_RANGE_SLOW = [20, 55];
+const AQUARIUM_FISH_SPEED_RANGE_FAST = [40, 75];
+
+function pickFishSpeedRange() {
+  return Math.random() < 0.5 ? AQUARIUM_FISH_SPEED_RANGE_SLOW : AQUARIUM_FISH_SPEED_RANGE_FAST;
+}
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
 const AQUARIUM_BUBBLE_TARGET = 10;
@@ -43,6 +67,12 @@ function aquariumPhase() {
   // `lastPhase` lives in content.js; 0 there means "no composer yet", but
   // the aquarium should still show something reasonable, so floor at 1.
   return typeof lastPhase === "number" && lastPhase > 0 ? lastPhase : 1;
+}
+
+// Shared by water and glass — both need the same phase-based top, offset
+// down on established chats only (see AQUARIUM_ESTABLISHED_TOP_OFFSET_PX).
+function aquariumTopFor(percent) {
+  return isEstablishedChat() ? `calc(${percent}% + ${AQUARIUM_ESTABLISHED_TOP_OFFSET_PX}px)` : `${percent}%`;
 }
 
 function aquariumIsEnabled() {
@@ -215,15 +245,15 @@ function injectAquarium() {
   glass.id = "aquarium-glass";
   Object.assign(glass.style, {
     position: "absolute",
-    top: `${AQUARIUM_WATER_TOP_BY_PHASE[1]}%`,
+    top: "0", // real value set live by positionGlassPanel() once shown — see below
     bottom: "0",
     display: "none", // positionGlassPanel() turns this on for established chats
     borderRadius: "28px",
     // Apple "Liquid Glass" approximation: blur + a much lighter
-    // saturation boost than before — 180% was amplifying the blue water
-    // showing through the blur enough that the panel read as tinted blue
-    // rather than clear. Higher white opacity for the same reason: it
-    // needs to actually neutralize the blue behind it, not just blur it.
+    // saturation boost — saturate(180%) amplifies the blue water showing
+    // through the blur enough that the panel reads as tinted blue rather
+    // than clear. Higher white opacity for the same reason: it needs to
+    // actually neutralize the blue behind it, not just blur it.
     backdropFilter: "blur(28px) saturate(110%)",
     WebkitBackdropFilter: "blur(28px) saturate(110%)",
     background: "rgba(255,255,255,0.5)",
@@ -242,7 +272,7 @@ function injectAquarium() {
   water.style.transition = "top 1800ms ease";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 10}%`;
+      water.style.top = aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0);
       setTimeout(() => {
         water.style.transition = "top 800ms ease"; // back to the normal speed for later phase changes
       }, 1800);
@@ -330,7 +360,7 @@ function maintainDisclaimerGlass() {
 function updateAquariumWaterLevel() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
-  water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 10}%`;
+  water.style.top = aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 0);
 }
 
 // Glass is only shown on established chats — a blank new chat has no
@@ -356,6 +386,10 @@ function positionGlassPanel() {
 
   const layerRect = layer.getBoundingClientRect();
   glass.style.display = "block";
+  // A few px below water's own top rather than perfectly flush — a hard
+  // seam where the two lines coincided read as a rendering glitch rather
+  // than an intentional glass wall sitting just past the waterline.
+  glass.style.top = `calc(${aquariumTopFor(AQUARIUM_WATER_TOP_BY_PHASE[1])} + ${AQUARIUM_GLASS_EXTRA_TOP_PX}px)`;
   glass.style.left = `${rect.left - layerRect.left}px`;
   glass.style.width = `${rect.width}px`;
   // Stops at the composer's own bottom edge rather than main's — the
@@ -374,7 +408,7 @@ function positionGlassPanel() {
 // a straight line. Shared by both creature types via `topRange`, which
 // is the only thing that differs — lobster stays confined to the bottom
 // fourth (bottom-dwelling), fish roam the fuller water column.
-function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
+function spawnSwimmer({ files, dataAttr, sizeRange, topRange, speedRange = [20, 55], container }) {
   const water = container || document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
 
@@ -394,7 +428,7 @@ function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
   const containerWidth = water.clientWidth || 400;
   let goingRight = Math.random() < 0.5;
   let x = goingRight ? -size : containerWidth + size;
-  const speed = 20 + Math.random() * 35; // px/sec
+  const speed = speedRange[0] + Math.random() * (speedRange[1] - speedRange[0]); // px/sec
   const willReverse = Math.random() < 0.35; // some turn around mid-swim
   const reverseX = containerWidth * (0.3 + Math.random() * 0.4);
   let hasReversed = false;
@@ -430,7 +464,13 @@ function spawnSwimmer({ files, dataAttr, sizeRange, topRange, container }) {
 }
 
 function spawnFish() {
-  spawnSwimmer({ files: AQUARIUM_FISH_FILES, dataAttr: "aquariumFish", sizeRange: [56, 96], topRange: [15, 85] });
+  spawnSwimmer({
+    files: AQUARIUM_FISH_FILES,
+    dataAttr: "aquariumFish",
+    sizeRange: [56, 96],
+    topRange: [15, 85],
+    speedRange: pickFishSpeedRange(),
+  });
 }
 
 function spawnLobster() {
@@ -557,10 +597,19 @@ setInterval(() => {
   positionGlassPanel();
   maintainFishPopulation();
   maintainLobsterPopulation();
-  maintainBubblePopulation();
   maintainSeaweedVisibility();
   maintainDisclaimerGlass();
 }, 3000);
+
+// Bubbles get their own faster tick, separate from the shared 3s one
+// above — at 3s, a bubble popping right after a tick could sit empty
+// for most of that window before being replaced, reading as bubbles
+// stopping rather than a continuous rise. 500ms keeps the gap short
+// enough that it never reads as empty.
+setInterval(() => {
+  if (!aquariumIsEnabled()) return;
+  maintainBubblePopulation();
+}, 500);
 
 // First paint doesn't wait for the interval's first tick.
 if (aquariumIsEnabled()) {

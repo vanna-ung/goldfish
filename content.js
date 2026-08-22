@@ -61,32 +61,41 @@ function phaseForLength(len) {
 // every keystroke, so it doesn't flicker while typing).
 const SASS_PHASES = {
   1: ["still thinking that through yourself?", "not bad, short and sweet"],
-  2: ["getting wordy over there", "hope that's necessary"],
-  3: ["congratulations, you're irrigation", "hope that one was worth it"],
-  4: ["Wivenhoe is watching", "that's a lot of water for one thought"],
-  5: ["at this point just move to the ocean", "this bowl doesn't stand a chance"],
+  2: ["getting wordy over there", "hope that's necessary", "Enough to make a thirst trap"],
+  3: ["congratulations, you're irrigation", "hope that one was worth it", "Chat, this is a lot of water"],
+  4: ["Wivenhoe is watching", "that's a lot of water for one thought", "Touch grass. It's well watered now"],
+  5: ["at this point just move to the ocean", "this bowl doesn't stand a chance", "Aura: evaporated"],
 };
 
 // Fish-out-of-water reaction, keyed by typing-length phase — gets more
 // flabbergasted the longer the pending prompt is. This is the ONLY thing
-// that reads prompt size; the fishbowl never does. Real art has started
-// landing (assets/fish/fish_reaction.png, drawn as the phase-5 reaction)
-// but only that one file exists so far — used for all 5 phases as an
-// interim placeholder until the teammate finishes the rest.
+// that reads prompt size; the fishbowl never does.
+//
+// Key 0 is the empty-composer resting state (distinct from phase 1, which
+// starts as soon as the user types anything).
 const REACTION_PHASE_IMAGE_FILES = {
-  1: "fish_reaction.png",
-  2: "fish_reaction.png",
-  3: "fish_reaction.png",
-  4: "fish_reaction.png",
-  5: "fish_reaction.png",
+  0: "reaction1.PNG",
+  1: "reaction2.PNG",
+  2: "reaction2.PNG",
+  3: "reaction2.PNG",
+  4: "reaction3.png",
+  5: "reaction3.png",
 };
 
 function reactionAssetUrl(file) {
   return chrome.runtime.getURL(`assets/fish/${file}`);
 }
 
+// Separate from phaseForLength() (which drives the sass comment and never
+// returns 0) so the empty-composer state can have its own reaction art
+// without disturbing sass's phase-1-is-the-resting-state behavior.
+function reactionPhaseForLength(len) {
+  return len === 0 ? 0 : phaseForLength(len);
+}
+
 let currentState = null; // last real state from the backend (bucket)
-let lastPhase = 0; // last typing-length phase rendered (fish + sass)
+let lastPhase = 0; // last typing-length phase rendered (sass)
+let lastReactionPhase = -1; // last reaction phase rendered (fish); -1 so phase 0 still renders once
 let lastComment = "";
 
 // On/off toggle from the popup, persisted so it survives across tabs/reloads.
@@ -94,31 +103,79 @@ let extensionEnabled = true;
 
 // ---- Fishbowl ----
 
+// Universal usage fishbowl (assets/usage/0-8.PNG) — driven by
+// state.totalPromptsSent, a lifetime count that never resets and is the
+// same across every chat (see getTotalPromptsSent() in background.js).
+// Separate from the daily cap this widget's text readout below still
+// shows; this image purely visualizes cumulative usage.
+//
+// Stage 0 = nothing sent, ever. Stage 1 = right after the very first
+// prompt. Stages 2-8 each need two MORE prompts past the previous stage
+// (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 total sent). Stage 8 is
+// terminal — stays there and shows the ml-used note instead of climbing
+// further.
+const USAGE_MAX_STAGE = 8;
+const ML_PER_PROMPT_DISPLAY = 25; // placeholder estimate, tune whenever
+
+function usageStageFor(totalPromptsSent) {
+  const total = totalPromptsSent || 0;
+  if (total <= 0) return 0;
+  return Math.min(USAGE_MAX_STAGE, 1 + Math.floor((total - 1) / 2));
+}
+
+function usageImageUrl(stage) {
+  return chrome.runtime.getURL(`assets/usage/${stage}.PNG`);
+}
+
+function digitAssetUrl(digit) {
+  return chrome.runtime.getURL(`assets/numbers/${digit}.PNG`);
+}
+
+// Two separate elements, deliberately: the fishbowl image floats in the
+// gap to the LEFT of the composer (mirrors positionFish()'s gap on the
+// right), while the "X prompts left" line sits on its own line UNDER the
+// composer. They used to be one stacked container; splitting them apart
+// is what lets each sit where it visually belongs instead of dragging
+// the other along with it.
 function injectBucket() {
   if (document.getElementById("water-tracker-bucket")) return;
 
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <div id="water-fill-placeholder" style="width: 96px; height: 96px; border-radius: 12px; background: #bfe4fb; display: flex; align-items: center; justify-content: center; font-size: 32px;">🐠</div>
-    <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
+    <div id="water-usage-wrap" style="position: relative; width: 160px; height: 160px;">
+      <img id="water-usage-img" width="160" height="160" style="display: block; transition: opacity 250ms ease;" alt="water usage" />
+      <div id="water-usage-cap-note" style="display: none; position: absolute; top: 4px; left: 0; right: 0; text-align: center; background: rgba(255,255,255,0.85); border-radius: 6px; padding: 2px 4px;">
+        <span id="water-usage-cap-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
+        <span style="font: 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">ml used</span>
+      </div>
+    </div>
   `;
   Object.assign(container.style, {
     position: "fixed",
-    // top/left/height set live by positionBucket() — see below
+    // top/left set live by positionBucket() — see below
     zIndex: 50,
-    background: "#fcfcfb",
-    borderRadius: "12px",
     padding: "8px",
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "6px",
     boxSizing: "border-box",
   });
   document.body.appendChild(container);
+
+  const readout = document.createElement("div");
+  readout.id = "water-readout";
+  Object.assign(readout.style, {
+    position: "fixed",
+    // top/left set live by positionReadout() — see below
+    zIndex: 50,
+    font: "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    color: "#2a5f8f",
+  });
+  document.body.appendChild(readout);
 }
+
+const BUCKET_GAP_BELOW_COMPOSER = 12;
 
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
@@ -127,37 +184,73 @@ function positionBucket() {
   const composerRect = anchorRectFor(composer);
   if (!composerRect) return;
 
-  // Mirror of positionFish() below — that one centers in the gap to the
-  // RIGHT of the composer (composer's right edge to the viewport's right
-  // edge). On the left there's a sidebar occupying real screen space, so
-  // the equivalent gap is bounded by the SIDEBAR's right edge, not the
-  // viewport's raw left edge (0) — using 0 would place this on top of/
-  // inside the sidebar whenever it's open.
+  // Centered in the gap to the LEFT of the composer. On the left there's
+  // a sidebar occupying real screen space, so the equivalent gap is
+  // bounded by the SIDEBAR's right edge, not the viewport's raw left
+  // edge (0) — using 0 would place this on top of/inside the sidebar
+  // whenever it's open.
   const sidebar = document.querySelector("aside.dframe-sidebar");
   const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
   const gapCenter = (leftBoundary + composerRect.left) / 2;
-  const width = container.offsetWidth || 130;
+  const width = container.offsetWidth || 160;
 
-  // Vertical span matches the sass comment's top (it straddles half above
-  // the composer's own top edge — see positionSass) down to the
-  // composer's bottom edge, rather than a fixed-size box — same formula
-  // positionSass() itself uses, computed independently here since sass
-  // can be hidden (display:none has offsetHeight 0) while this widget is
-  // always visible.
-  const sass = document.getElementById("water-sass");
-  const sassHeight = sass && sass.offsetHeight > 0 ? sass.offsetHeight : 24;
-  const top = composerRect.top - sassHeight / 2;
-  const height = composerRect.bottom - top;
-
-  container.style.top = `${top}px`;
   container.style.left = `${gapCenter - width / 2}px`;
-  container.style.height = `${height}px`;
+
+  // Bottom-aligned with the composer's own bottom edge. Tried docking to
+  // the aquarium's sand strip instead, but sand sits at the very bottom
+  // of the visible chat area regardless of where the composer is — fine
+  // for an established chat (composer's already down there too), but it
+  // left the fishbowl stranded well below a NEW chat's vertically
+  // centered composer. Tracking the composer directly keeps it right
+  // where it visually belongs in both layouts.
+  container.style.top = `${composerRect.bottom - container.offsetHeight}px`;
+}
+
+// While a game screen is up, games.js takes over the readout's styling
+// and position (heading, centered above the game panel) via
+// setReadoutGameMode(true) — this flag makes positionReadout() below
+// stand down so the two don't fight over the element every frame.
+// games.js calls setReadoutGameMode(false) again once the panel closes.
+let readoutGameMode = false;
+
+function setReadoutGameMode(on) {
+  readoutGameMode = on;
+  const readout = document.getElementById("water-readout");
+  if (!readout) return;
+  if (on) {
+    readout.style.textAlign = "center";
+    readout.style.fontSize = "14px";
+    readout.style.fontWeight = "600";
+  } else {
+    readout.style.textAlign = "";
+    readout.style.fontSize = "12px";
+    readout.style.fontWeight = "";
+    readout.style.width = "";
+  }
+}
+
+function positionReadout() {
+  if (readoutGameMode) return; // games.js positions it above the game panel instead
+  const readout = document.getElementById("water-readout");
+  const composer = findComposer();
+  if (!readout || !composer) return;
+  const composerRect = anchorRectFor(composer);
+  if (!composerRect) return;
+
+  // Below the composer, left-aligned with its own left edge — same in
+  // both a new chat (composer centered) and an established one (docked
+  // bottom), since it's always relative to composerRect regardless of
+  // where that rect currently sits on screen.
+  readout.style.top = `${composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER}px`;
+  readout.style.left = `${composerRect.left}px`;
 }
 
 let bucketPositionLoopActive = false;
 function bucketPositionLoop() {
   if (!bucketPositionLoopActive) return;
   positionBucket();
+  positionReadout();
+  positionUsageTracker();
   requestAnimationFrame(bucketPositionLoop);
 }
 function startBucketPositionLoop() {
@@ -169,15 +262,107 @@ function stopBucketPositionLoop() {
   bucketPositionLoopActive = false;
 }
 
+// Crossfades rather than swapping instantly — covers "animate to 1.png"
+// on the very first prompt and reads consistently for every later stage
+// change too, not just that first one.
+function setUsageStage(stage) {
+  const img = document.getElementById("water-usage-img");
+  if (!img) return;
+  if (img.dataset.stage === String(stage)) return; // already showing this stage
+  img.dataset.stage = String(stage);
+  const url = usageImageUrl(stage);
+  img.style.opacity = "0";
+  setTimeout(() => {
+    img.src = url;
+    requestAnimationFrame(() => {
+      img.style.opacity = "1";
+    });
+  }, 200);
+}
+
+// Shared by both digit displays below — the lifetime cap-note and the
+// daily usage tracker each render a plain integer as a row of the
+// teammate's number sprites.
+function renderDigitSprites(container, number, size) {
+  container.innerHTML = "";
+  String(number)
+    .split("")
+    .forEach((digit) => {
+      const img = document.createElement("img");
+      img.src = digitAssetUrl(digit);
+      img.width = size;
+      img.height = size;
+      container.appendChild(img);
+    });
+}
+
+function renderMlUsedDigits(totalPromptsSent) {
+  const digitsEl = document.getElementById("water-usage-cap-digits");
+  if (!digitsEl) return;
+  renderDigitSprites(digitsEl, (totalPromptsSent || 0) * ML_PER_PROMPT_DISPLAY, 10);
+}
+
+// ---- Usage tracker (underneath the fishbowl) ----
+// Separate metric from both the daily prompt cap and the lifetime usage
+// fishbowl above, though it shares that fishbowl's "ever, everywhere"
+// nature: a flat mL-per-prompt rate (background.js's ML_PER_PROMPT_USAGE)
+// off totalPromptsSent, universal across chats and days, never resets.
+function injectUsageTracker() {
+  if (document.getElementById("water-usage-tracker")) return;
+  const el = document.createElement("div");
+  el.id = "water-usage-tracker";
+  el.innerHTML = `
+    <span id="water-usage-tracker-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
+    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used today</span>
+  `;
+  Object.assign(el.style, {
+    position: "fixed",
+    // top/left set live by positionUsageTracker() — see below
+    zIndex: 50,
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  });
+  document.body.appendChild(el);
+}
+
+function updateUsageTracker(state) {
+  injectUsageTracker();
+  const digitsEl = document.getElementById("water-usage-tracker-digits");
+  if (digitsEl) renderDigitSprites(digitsEl, state.mlUsed ?? 0, 12);
+}
+
+function positionUsageTracker() {
+  const el = document.getElementById("water-usage-tracker");
+  const bucket = document.getElementById("water-tracker-bucket");
+  if (!el || !bucket) return;
+  const rect = bucket.getBoundingClientRect();
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.bottom + 8}px`;
+}
+
 function updateBucket(state) {
   currentState = state;
   injectBucket();
+  updateUsageTracker(state);
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
   readout.innerHTML = state.capped
-    ? "Bucket empty — earn another prompt"
-    : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
+    ? "Play the game to get another prompt!"
+    : `<strong>${state.remaining}</strong>/${state.cap} prompts left today`;
+
+  const stage = usageStageFor(state.totalPromptsSent);
+  setUsageStage(stage);
+  const capNote = document.getElementById("water-usage-cap-note");
+  if (capNote) {
+    if (stage >= USAGE_MAX_STAGE) {
+      renderMlUsedDigits(state.totalPromptsSent);
+      capNote.style.display = "block";
+    } else {
+      capNote.style.display = "none";
+    }
+  }
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.
@@ -187,6 +372,13 @@ function updateBucket(state) {
 
 // ---- Fish placeholder + sass comment (typing-length phase) ----
 
+const DEFAULT_REACTION_SIZE = 150;
+// Per-file display size (box side length, px) — reaction2 reads bigger
+// on screen than reaction3, independent of their native pixel dimensions.
+const REACTION_IMAGE_SIZE = {
+  "reaction2.PNG": 220,
+};
+
 function injectFish() {
   if (document.getElementById("water-fish")) return;
   const el = document.createElement("img");
@@ -195,8 +387,12 @@ function injectFish() {
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
-    width: "150px",
-    height: "150px",
+    width: `${DEFAULT_REACTION_SIZE}px`,
+    height: `${DEFAULT_REACTION_SIZE}px`,
+    // reaction2/reaction3 are different native pixel sizes and aspect
+    // ratios — "contain" keeps each rendering without stretching its own
+    // proportions to fill the (possibly per-file-sized) box.
+    objectFit: "contain",
     display: "none",
   });
   document.body.appendChild(el);
@@ -205,8 +401,11 @@ function injectFish() {
 function renderFishPlaceholder(phase) {
   const el = document.getElementById("water-fish");
   if (!el) return;
-  const file = REACTION_PHASE_IMAGE_FILES[phase] || REACTION_PHASE_IMAGE_FILES[1];
+  const file = REACTION_PHASE_IMAGE_FILES[phase] ?? REACTION_PHASE_IMAGE_FILES[0];
   el.src = reactionAssetUrl(file);
+  const size = REACTION_IMAGE_SIZE[file] ?? DEFAULT_REACTION_SIZE;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
 }
 
 function injectSass() {
@@ -228,6 +427,18 @@ function injectSass() {
   document.body.appendChild(el);
 }
 
+// Vertical offset from composerRect.top, per reaction file — reaction2
+// renders at 220px (see REACTION_IMAGE_SIZE) instead of the 150px
+// default, so anchoring it at the same +8 offset as the others left it
+// hanging noticeably further down past the composer. Shifting it up
+// keeps it reading as anchored near the composer's top edge like the
+// rest. Purely a function of composerRect, so it applies the same way
+// in both new and established chats.
+const REACTION_IMAGE_TOP_OFFSET = {
+  "reaction2.PNG": -60,
+};
+const DEFAULT_REACTION_TOP_OFFSET = 8;
+
 function positionFish(composerRect) {
   const el = document.getElementById("water-fish");
   if (!el || !composerRect) return;
@@ -236,7 +447,9 @@ function positionFish(composerRect) {
   const gapCenter = (composerRect.right + window.innerWidth) / 2;
   const fishWidth = el.offsetWidth || 36;
   el.style.left = `${gapCenter - fishWidth / 2}px`;
-  el.style.top = `${composerRect.top + 8}px`;
+  const file = REACTION_PHASE_IMAGE_FILES[lastReactionPhase] ?? REACTION_PHASE_IMAGE_FILES[0];
+  const topOffset = REACTION_IMAGE_TOP_OFFSET[file] ?? DEFAULT_REACTION_TOP_OFFSET;
+  el.style.top = `${composerRect.top + topOffset}px`;
 }
 
 function positionSass(composerRect) {
@@ -315,6 +528,7 @@ function stopPositionLoop() {
 // resting state is phase 1, not hidden. See phaseForLength().
 function hidePhaseUI() {
   lastPhase = 0;
+  lastReactionPhase = -1;
   lastComment = "";
   stopPositionLoop();
   const fish = document.getElementById("water-fish");
@@ -337,7 +551,12 @@ function updatePhaseUI(len, composer) {
     lastPhase = phase;
     const options = SASS_PHASES[phase] || [];
     lastComment = options[Math.floor(Math.random() * options.length)] || "";
-    renderFishPlaceholder(phase);
+  }
+
+  const reactionPhase = reactionPhaseForLength(len);
+  if (reactionPhase !== lastReactionPhase) {
+    lastReactionPhase = reactionPhase;
+    renderFishPlaceholder(reactionPhase);
   }
 
   const fish = document.getElementById("water-fish");
@@ -383,9 +602,13 @@ function teardownAll() {
   lastPhase = 0;
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");
+  const readout = document.getElementById("water-readout");
+  const usageTracker = document.getElementById("water-usage-tracker");
   const fish = document.getElementById("water-fish");
   const sass = document.getElementById("water-sass");
   if (bucket) bucket.remove();
+  if (readout) readout.remove();
+  if (usageTracker) usageTracker.remove();
   if (fish) fish.remove();
   if (sass) sass.remove();
 }
@@ -444,7 +667,7 @@ function recordPromptIfNotDuped() {
   lastRecordedAt = now;
   chrome.runtime.sendMessage({ type: "RECORD_PROMPT" }, (state) => {
     if (chrome.runtime.lastError) return;
-    if (state) updateBucket(state);
+    if (state) updateBucket(state); // includes state.mlUsed — see updateUsageTracker()
   });
 }
 

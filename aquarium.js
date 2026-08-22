@@ -24,20 +24,6 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // drained by one big prompt"). Numbers are top-of-water as a % of main's
 // own height, not the viewport.
 const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 0, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
-// claude.ai renders its own sticky-header fade directly above main's
-// content — a `.df-header-backdrop` element with a mask that's solid for
-// its own top ~48px, then fades to fully transparent over its last 24px
-// (measured live: 72px total). It composites against whatever's actually
-// painted behind it, which used to be main's own plain background before
-// this feature cleared that to transparent — now it's our water, so its
-// fade (itself a near-white blur) shows a white-to-blue seam that never
-// existed before. Can't fix this by recoloring main itself (the fade
-// doesn't read main's CSS background property, it reads what's actually
-// painted there), so instead this patches over just that top strip with
-// main's original color — see injectHeaderPatch() — which restores the
-// fade's original "blends into nothing" behavior without giving up
-// phase-1 water being genuinely 100% full everywhere below it.
-const AQUARIUM_HEADER_PATCH_HEIGHT = 72;
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
 const AQUARIUM_LOBSTER_TARGET = 1; // rare — at most one on screen
 const AQUARIUM_LOBSTER_SPAWN_CHANCE = 0.15; // and not guaranteed even when below target
@@ -171,25 +157,6 @@ function maintainSeaweedVisibility() {
   seaweed.style.display = isEstablishedChat() ? "none" : "block";
 }
 
-// See AQUARIUM_HEADER_PATCH_HEIGHT above for why this exists. Painted
-// last (after water/glass) so it sits on top of both within that top
-// strip specifically, regardless of the current water phase — a fixed
-// pixel height, not a percentage, since it's matching a fixed-height
-// native element rather than scaling with main's own height.
-function injectHeaderPatch(layer, main) {
-  const patch = document.createElement("div");
-  patch.id = "aquarium-header-patch";
-  Object.assign(patch.style, {
-    position: "absolute",
-    left: "0",
-    right: "0",
-    top: "0",
-    height: `${AQUARIUM_HEADER_PATCH_HEIGHT}px`,
-    background: aquariumOriginalBg.get(main),
-  });
-  layer.appendChild(patch);
-}
-
 // Returns true only when it just created a fresh aquarium (so the caller
 // knows NOT to also call updateAquariumWaterLevel() this tick — doing so
 // would synchronously jump the water to its target before the fill-up
@@ -265,8 +232,6 @@ function injectAquarium() {
     pointerEvents: "none",
   });
   layer.appendChild(glass);
-
-  injectHeaderPatch(layer, main);
 
   main.insertBefore(layer, main.firstChild); // first child = behind all real content
 

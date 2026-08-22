@@ -15,29 +15,44 @@ async function getDailyCap() {
   return dailyCap ?? DEFAULT_DAILY_CAP;
 }
 
-async function getTodayCount() {
+async function getTodayEntry() {
   const key = todayKey();
   const store = await chrome.storage.local.get(key);
-  return store[key]?.count ?? 0;
+  return store[key] ?? { count: 0, bonus: 0 };
 }
 
 async function getState() {
-  const [count, cap] = await Promise.all([getTodayCount(), getDailyCap()]);
-  const remaining = Math.max(cap - count, 0);
+  const [entry, cap] = await Promise.all([getTodayEntry(), getDailyCap()]);
+  // `bonus` is prompts earned today via a minigame — added on top of the
+  // configured cap, not saved into it, so it never carries over to
+  // tomorrow and never touches the user's actual daily-limit setting.
+  const effectiveCap = cap + (entry.bonus ?? 0);
+  const remaining = Math.max(effectiveCap - entry.count, 0);
   return {
     date: todayKey(),
-    count,
-    cap,
+    count: entry.count,
+    cap: effectiveCap,
     remaining,
-    fraction: cap > 0 ? remaining / cap : 0,
+    fraction: effectiveCap > 0 ? remaining / effectiveCap : 0,
     capped: remaining <= 0,
   };
 }
 
 async function recordPrompt() {
   const key = todayKey();
-  const count = await getTodayCount();
-  await chrome.storage.local.set({ [key]: { count: count + 1 } });
+  const entry = await getTodayEntry();
+  await chrome.storage.local.set({ [key]: { ...entry, count: entry.count + 1 } });
+  return getState();
+}
+
+// Called when a minigame is won — grants exactly one extra prompt for
+// today. The overlay in games.js re-checks state after every send, so
+// this bonus naturally covers exactly one send before capped goes true
+// again ("unlock grants exactly one prompt, then the overlay returns").
+async function earnPrompt() {
+  const key = todayKey();
+  const entry = await getTodayEntry();
+  await chrome.storage.local.set({ [key]: { ...entry, bonus: (entry.bonus ?? 0) + 1 } });
   return getState();
 }
 
@@ -51,6 +66,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     switch (message?.type) {
       case "RECORD_PROMPT":
         sendResponse(await recordPrompt());
+        break;
+      case "EARN_PROMPT":
+        sendResponse(await earnPrompt());
         break;
       case "GET_STATE":
         sendResponse(await getState());

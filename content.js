@@ -20,15 +20,10 @@ const CONFIG = {
 //    length. Drives the sass comment + fish art placeholder. Entirely
 //    client-side — no backend round-trip, since it never persists.
 
-const BUCKET_TOP = 20;
-const BUCKET_HEIGHT = 120;
-
-// The fishbowl is purely a "prompts remaining" gauge — one drawing per
-// remaining count (10 prompts/day default = 11 fishbowls, 0 through 10).
-// It never looks at what's being typed; that's the fish-reaction's job
-// below. Swap renderFishbowlStage()'s body for an
-// <img src="assets/fishbowl/remaining-N.png"> once the teammate's set is
-// ready — `remaining` is already the only input it needs.
+// The fishbowl widget (placeholder + "X prompts left" line) is purely a
+// "prompts remaining" gauge — never looks at what's being typed, that's
+// the fish-reaction's job below. Real fishbowl art was pulled while it's
+// being redesigned — plain placeholder box until new art lands.
 
 // Phase boundaries are intentionally short (100 chars/phase) for demo
 // purposes, not tuned to real prompt-length distributions.
@@ -74,23 +69,21 @@ const SASS_PHASES = {
 
 // Fish-out-of-water reaction, keyed by typing-length phase — gets more
 // flabbergasted the longer the pending prompt is. This is the ONLY thing
-// that reads prompt size; the fishbowl above never does. Placeholder is a
-// color + escalating emoji; swap renderFishPlaceholder()'s body for an
-// <img src="assets/fish-reaction/phase-N.png"> once the pixel art lands.
-const REACTION_PHASE_COLORS = {
-  1: "#bfe4fb",
-  2: "#8fd0f5",
-  3: "#f5d98f",
-  4: "#f2a97e",
-  5: "#e8734a",
+// that reads prompt size; the fishbowl never does. Real art has started
+// landing (assets/fish/fish_reaction.png, drawn as the phase-5 reaction)
+// but only that one file exists so far — used for all 5 phases as an
+// interim placeholder until the teammate finishes the rest.
+const REACTION_PHASE_IMAGE_FILES = {
+  1: "fish_reaction.png",
+  2: "fish_reaction.png",
+  3: "fish_reaction.png",
+  4: "fish_reaction.png",
+  5: "fish_reaction.png",
 };
-const REACTION_PHASE_EMOJI = {
-  1: "🐟",
-  2: "😯🐟",
-  3: "😮🐟",
-  4: "😱🐟",
-  5: "🫨🐟",
-};
+
+function reactionAssetUrl(file) {
+  return chrome.runtime.getURL(`assets/fish/${file}`);
+}
 
 let currentState = null; // last real state from the backend (bucket)
 let lastPhase = 0; // last typing-length phase rendered (fish + sass)
@@ -107,42 +100,73 @@ function injectBucket() {
   const container = document.createElement("div");
   container.id = "water-tracker-bucket";
   container.innerHTML = `
-    <svg viewBox="0 0 100 150" width="70" height="105">
-      <defs>
-        <clipPath id="water-clip">
-          <rect x="5" y="${BUCKET_TOP}" width="90" height="${BUCKET_HEIGHT}" />
-        </clipPath>
-      </defs>
-      <rect x="5" y="${BUCKET_TOP}" width="90" height="${BUCKET_HEIGHT}" rx="8" fill="none" stroke="#4a90d9" stroke-width="3" />
-      <rect id="water-fill" x="5" y="${BUCKET_TOP}" width="90" height="${BUCKET_HEIGHT}" rx="8" fill="#4a90d9" clip-path="url(#water-clip)" />
-    </svg>
+    <div id="water-fill-placeholder" style="width: 96px; height: 96px; border-radius: 12px; background: #bfe4fb; display: flex; align-items: center; justify-content: center; font-size: 32px;">🐠</div>
     <div id="water-readout" style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; color: #2a5f8f;"></div>
   `;
   Object.assign(container.style, {
     position: "fixed",
-    // top-right, next to the incognito/ghost icon — nudge `right` if it
-    // ends up overlapping the real icon once checked against the live page
-    top: "16px",
-    right: "64px",
+    // top/left/height set live by positionBucket() — see below
     zIndex: 50,
     background: "#fcfcfb",
     borderRadius: "12px",
     padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    boxSizing: "border-box",
   });
   document.body.appendChild(container);
 }
 
-// Placeholder renderer — stands in for one-image-per-remaining-count until
-// the teammate's fishbowl set lands. Snaps directly to `remaining`, no
-// smoothing, since the real version will be a discrete image swap, not an
-// animated fill.
-function renderFishbowlStage(remaining, cap) {
-  const waterFill = document.getElementById("water-fill");
-  if (!waterFill) return;
-  const fraction = cap > 0 ? Math.max(0, Math.min(1, remaining / cap)) : 0;
-  const filledHeight = BUCKET_HEIGHT * fraction;
-  waterFill.setAttribute("y", BUCKET_TOP + (BUCKET_HEIGHT - filledHeight));
-  waterFill.setAttribute("height", filledHeight);
+function positionBucket() {
+  const container = document.getElementById("water-tracker-bucket");
+  const composer = findComposer();
+  if (!container || !composer) return;
+  const composerRect = anchorRectFor(composer);
+  if (!composerRect) return;
+
+  // Mirror of positionFish() below — that one centers in the gap to the
+  // RIGHT of the composer (composer's right edge to the viewport's right
+  // edge). On the left there's a sidebar occupying real screen space, so
+  // the equivalent gap is bounded by the SIDEBAR's right edge, not the
+  // viewport's raw left edge (0) — using 0 would place this on top of/
+  // inside the sidebar whenever it's open.
+  const sidebar = document.querySelector("aside.dframe-sidebar");
+  const leftBoundary = sidebar ? sidebar.getBoundingClientRect().right : 0;
+  const gapCenter = (leftBoundary + composerRect.left) / 2;
+  const width = container.offsetWidth || 130;
+
+  // Vertical span matches the sass comment's top (it straddles half above
+  // the composer's own top edge — see positionSass) down to the
+  // composer's bottom edge, rather than a fixed-size box — same formula
+  // positionSass() itself uses, computed independently here since sass
+  // can be hidden (display:none has offsetHeight 0) while this widget is
+  // always visible.
+  const sass = document.getElementById("water-sass");
+  const sassHeight = sass && sass.offsetHeight > 0 ? sass.offsetHeight : 24;
+  const top = composerRect.top - sassHeight / 2;
+  const height = composerRect.bottom - top;
+
+  container.style.top = `${top}px`;
+  container.style.left = `${gapCenter - width / 2}px`;
+  container.style.height = `${height}px`;
+}
+
+let bucketPositionLoopActive = false;
+function bucketPositionLoop() {
+  if (!bucketPositionLoopActive) return;
+  positionBucket();
+  requestAnimationFrame(bucketPositionLoop);
+}
+function startBucketPositionLoop() {
+  if (bucketPositionLoopActive) return;
+  bucketPositionLoopActive = true;
+  requestAnimationFrame(bucketPositionLoop);
+}
+function stopBucketPositionLoop() {
+  bucketPositionLoopActive = false;
 }
 
 function updateBucket(state) {
@@ -151,10 +175,9 @@ function updateBucket(state) {
   const readout = document.getElementById("water-readout");
   if (!readout) return;
 
-  renderFishbowlStage(state.remaining, state.cap);
   readout.innerHTML = state.capped
     ? "Bucket empty — earn another prompt"
-    : `<strong>${state.remaining}</strong> prompts left`;
+    : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.
@@ -166,20 +189,15 @@ function updateBucket(state) {
 
 function injectFish() {
   if (document.getElementById("water-fish")) return;
-  const el = document.createElement("div");
+  const el = document.createElement("img");
   el.id = "water-fish";
+  el.alt = "fish reaction";
   Object.assign(el.style, {
     position: "fixed",
     zIndex: 50,
-    minWidth: "36px",
-    height: "36px",
-    padding: "0 6px",
-    borderRadius: "8px",
+    width: "150px",
+    height: "150px",
     display: "none",
-    alignItems: "center",
-    justifyContent: "center",
-    font: "16px system-ui, sans-serif",
-    whiteSpace: "nowrap",
   });
   document.body.appendChild(el);
 }
@@ -187,8 +205,8 @@ function injectFish() {
 function renderFishPlaceholder(phase) {
   const el = document.getElementById("water-fish");
   if (!el) return;
-  el.style.background = REACTION_PHASE_COLORS[phase] || REACTION_PHASE_COLORS[1];
-  el.textContent = REACTION_PHASE_EMOJI[phase] || REACTION_PHASE_EMOJI[1];
+  const file = REACTION_PHASE_IMAGE_FILES[phase] || REACTION_PHASE_IMAGE_FILES[1];
+  el.src = reactionAssetUrl(file);
 }
 
 function injectSass() {
@@ -348,6 +366,7 @@ function requestState() {
 // the bucket too.
 function bootUp() {
   injectBucket();
+  startBucketPositionLoop();
   requestState();
   // Phase 1 (comment + fish) shows immediately on load, before any typing —
   // not gated behind the user's first keystroke. If the composer isn't
@@ -357,9 +376,10 @@ function bootUp() {
 }
 
 // Fully removes everything from the DOM (not just hidden) and stops the
-// position loop — the "off" state should leave nothing running or visible.
+// position loops — the "off" state should leave nothing running or visible.
 function teardownAll() {
   stopPositionLoop();
+  stopBucketPositionLoop();
   lastPhase = 0;
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");
@@ -465,6 +485,28 @@ document.addEventListener("click", (e) => {
   if (!extensionEnabled) return;
   if (!e.target.closest(CONFIG.sendButtonSelector)) return;
   recordPromptIfNotDuped();
+});
+
+// A large paste/attachment renders as a chip with its own "Remove" (X)
+// button near its top-left corner — verified live via
+// button[aria-label="Remove"] — which the sass comment (also anchored
+// near the composer's top-left, see positionSass) can end up covering
+// since both want the same corner. Rather than hunt down and hardcode
+// that button's exact selector, just drop the sass comment's z-index
+// below normal page content while hovering any attachment chip, so
+// whatever claude.ai renders there — Remove button or otherwise — wins.
+document.addEventListener("mouseover", (e) => {
+  if (!e.target.closest(ATTACHMENT_SELECTOR)) return;
+  const sass = document.getElementById("water-sass");
+  if (sass) sass.style.zIndex = "1";
+});
+
+document.addEventListener("mouseout", (e) => {
+  const chip = e.target.closest(ATTACHMENT_SELECTOR);
+  if (!chip) return;
+  if (chip.contains(e.relatedTarget)) return; // moved within the same chip, not away from it
+  const sass = document.getElementById("water-sass");
+  if (sass) sass.style.zIndex = "50";
 });
 
 // Catch-all for content changes that don't fire a native `input` event —

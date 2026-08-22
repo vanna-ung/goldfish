@@ -114,16 +114,52 @@ function injectBucket() {
   `;
   Object.assign(container.style, {
     position: "fixed",
-    // top-right, next to the incognito/ghost icon — nudge `right` if it
-    // ends up overlapping the real icon once checked against the live page
-    top: "16px",
-    right: "64px",
+    // top/left set live by positionBucket() — see below
     zIndex: 50,
     background: "#fcfcfb",
     borderRadius: "12px",
     padding: "8px",
   });
   document.body.appendChild(container);
+}
+
+// Verified live: the "Share" button's data-testid only exists on an
+// established chat (never found on /new, since there's nothing to share
+// yet) — falls back to a fixed top offset there instead.
+const SHARE_BUTTON_SELECTOR = '[data-testid="wiggle-controls-actions-share"]';
+
+function positionBucket() {
+  const container = document.getElementById("water-tracker-bucket");
+  const composer = findComposer();
+  if (!container || !composer) return;
+  const composerRect = anchorRectFor(composer);
+  if (!composerRect) return;
+
+  const shareButton = document.querySelector(SHARE_BUTTON_SELECTOR);
+  const top = shareButton ? shareButton.getBoundingClientRect().bottom + 12 : 16;
+
+  // Centered in the leftover horizontal space to the right of the
+  // composer — same formula as positionFish() below.
+  const gapCenter = (composerRect.right + window.innerWidth) / 2;
+  const width = container.offsetWidth || 130;
+
+  container.style.top = `${top}px`;
+  container.style.left = `${gapCenter - width / 2}px`;
+}
+
+let bucketPositionLoopActive = false;
+function bucketPositionLoop() {
+  if (!bucketPositionLoopActive) return;
+  positionBucket();
+  requestAnimationFrame(bucketPositionLoop);
+}
+function startBucketPositionLoop() {
+  if (bucketPositionLoopActive) return;
+  bucketPositionLoopActive = true;
+  requestAnimationFrame(bucketPositionLoop);
+}
+function stopBucketPositionLoop() {
+  bucketPositionLoopActive = false;
 }
 
 function renderFishbowlStage(remaining) {
@@ -336,6 +372,7 @@ function requestState() {
 // the bucket too.
 function bootUp() {
   injectBucket();
+  startBucketPositionLoop();
   requestState();
   // Phase 1 (comment + fish) shows immediately on load, before any typing —
   // not gated behind the user's first keystroke. If the composer isn't
@@ -345,9 +382,10 @@ function bootUp() {
 }
 
 // Fully removes everything from the DOM (not just hidden) and stops the
-// position loop — the "off" state should leave nothing running or visible.
+// position loops — the "off" state should leave nothing running or visible.
 function teardownAll() {
   stopPositionLoop();
+  stopBucketPositionLoop();
   lastPhase = 0;
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");

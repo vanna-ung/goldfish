@@ -130,11 +130,11 @@ function injectAquarium() {
     position: "absolute",
     left: "0",
     right: "0",
-    top: "-18px",
-    height: "36px",
+    top: "0", // sits on the water surface itself, not straddling above the edge
+    height: "18px",
     backgroundImage: `url(${aquariumAssetUrl("wave.PNG")})`,
     backgroundRepeat: "repeat-x",
-    backgroundSize: "36px 36px",
+    backgroundSize: "18px 18px",
     opacity: "0.85",
     animation: "aquarium-wave-scroll 2.5s linear infinite",
   });
@@ -158,23 +158,30 @@ function injectAquarium() {
   // the fish/bubbles inside it) but BEHIND the real chat text — it's a
   // sibling of `water`, appended after it, both inside `layer`, so it
   // paints over the water while `layer` as a whole stays behind main's
-  // real content (see positionGlassPanel for sizing). Fixed span from
-  // roughly where phase-1's water line sits down to the composer — it's
-  // the tank's glass wall, visible whether or not water currently reaches
-  // that high, not a mask that tracks the current water level.
+  // real content (see positionGlassPanel for sizing/visibility). Fixed
+  // vertical span from roughly where phase-1's water line sits down to
+  // the composer — it's the tank's glass wall, visible whether or not
+  // water currently reaches that high, not a mask that tracks the
+  // current water level. Only shown on established chats (see
+  // positionGlassPanel) — a blank new chat has no history to protect.
   const glass = document.createElement("div");
   glass.id = "aquarium-glass";
   Object.assign(glass.style, {
     position: "absolute",
-    left: "50%",
-    transform: "translateX(-50%)",
     top: `${AQUARIUM_WATER_TOP_BY_PHASE[1]}%`,
     bottom: "0",
-    width: "780px",
-    maxWidth: "90%",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
-    background: "rgba(255,255,255,0.28)",
+    display: "none", // positionGlassPanel() turns this on for established chats
+    borderRadius: "28px",
+    // Apple "Liquid Glass" approximation: strong blur + saturation boost
+    // (the saturate() is what keeps colors underneath from looking washed
+    // out/gray through the blur), a soft white tint, an inset highlight
+    // along the top/left edge to read as a lit glass rim, and a diffuse
+    // shadow to lift it off the water rather than looking painted on.
+    backdropFilter: "blur(24px) saturate(180%)",
+    WebkitBackdropFilter: "blur(24px) saturate(180%)",
+    background: "rgba(255,255,255,0.22)",
+    boxShadow:
+      "inset 0 1px 1px rgba(255,255,255,0.6), inset 0 0 0 1px rgba(255,255,255,0.25), 0 8px 32px rgba(20,60,90,0.18)",
     pointerEvents: "none",
   });
   layer.appendChild(glass);
@@ -214,17 +221,31 @@ function updateAquariumWaterLevel() {
   water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 10}%`;
 }
 
-// Glass panel's width tracks the composer's own width ("from each end of
-// the prompt box"), re-synced periodically rather than every frame — it
-// doesn't need to be pixel-perfect live, just roughly matched.
+// Glass is only shown on established chats — a blank new chat has no
+// history behind it to protect. Its left/width track the composer's own
+// rect directly (not centered within `main`, which spans the full
+// viewport width INCLUDING the portion hidden behind the sidebar — that
+// mismatch was why it previously rendered shifted left of the visible
+// content). Re-synced periodically rather than every frame; doesn't need
+// to be pixel-perfect live.
 function positionGlassPanel() {
   const glass = document.querySelector("#water-aquarium #aquarium-glass");
-  if (!glass) return;
+  const layer = document.getElementById("water-aquarium");
+  if (!glass || !layer) return;
+
+  if (!isEstablishedChat()) {
+    glass.style.display = "none";
+    return;
+  }
+
   const composer = typeof findComposer === "function" ? findComposer() : null;
   const rect = composer && typeof anchorRectFor === "function" ? anchorRectFor(composer) : null;
-  if (rect && rect.width > 0) {
-    glass.style.width = `${rect.width}px`;
-  }
+  if (!rect || rect.width <= 0) return;
+
+  const layerRect = layer.getBoundingClientRect();
+  glass.style.display = "block";
+  glass.style.left = `${rect.left - layerRect.left}px`;
+  glass.style.width = `${rect.width}px`;
 }
 
 // ---- Swimming fish ----
@@ -241,7 +262,7 @@ function spawnFish() {
   const variant = 1 + Math.floor(Math.random() * AQUARIUM_FISH_VARIANTS);
   img.src = aquariumAssetUrl(`fish${variant}.PNG`);
   img.dataset.aquariumFish = "true";
-  const size = 24 + Math.random() * 18;
+  const size = 56 + Math.random() * 40;
   img.width = size;
   img.height = size;
   Object.assign(img.style, {
@@ -259,7 +280,10 @@ function spawnFish() {
   const reverseX = containerWidth * (0.3 + Math.random() * 0.4);
   let hasReversed = false;
 
-  img.style.transform = goingRight ? "scaleX(1)" : "scaleX(-1)";
+  // The source art faces left by default, so travelling right needs the
+  // horizontal flip, not the other way — this was backwards before (fish
+  // visually swam tail-first).
+  img.style.transform = goingRight ? "scaleX(-1)" : "scaleX(1)";
   img.style.left = `${x}px`;
 
   let lastTime = performance.now();
@@ -272,7 +296,7 @@ function spawnFish() {
     if (willReverse && !hasReversed && ((goingRight && x >= reverseX) || (!goingRight && x <= reverseX))) {
       goingRight = !goingRight;
       hasReversed = true;
-      img.style.transform = goingRight ? "scaleX(1)" : "scaleX(-1)";
+      img.style.transform = goingRight ? "scaleX(-1)" : "scaleX(1)";
     }
 
     img.style.left = `${x}px`;
@@ -313,7 +337,7 @@ function spawnBubble() {
   const variant = 1 + Math.floor(Math.random() * AQUARIUM_BUBBLE_VARIANTS);
   img.src = aquariumAssetUrl(`bubble${variant}.PNG`);
   img.dataset.aquariumBubble = "true";
-  const startSize = 10 + Math.random() * 10;
+  const startSize = 28 + Math.random() * 20;
   Object.assign(img.style, {
     position: "absolute",
     left: `${5 + Math.random() * 90}%`,

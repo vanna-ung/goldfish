@@ -562,10 +562,19 @@ setInterval(() => {
   positionGlassPanel();
   maintainFishPopulation();
   maintainLobsterPopulation();
-  maintainBubblePopulation();
   maintainSeaweedVisibility();
   maintainDisclaimerGlass();
 }, 3000);
+
+// Bubbles get their own faster tick, separate from the shared 3s one
+// above — at 3s, a bubble popping right after a tick could sit empty
+// for most of that window before being replaced, reading as bubbles
+// stopping rather than a continuous rise. 500ms keeps the gap short
+// enough that it never reads as empty.
+setInterval(() => {
+  if (!aquariumIsEnabled()) return;
+  maintainBubblePopulation();
+}, 500);
 
 // First paint doesn't wait for the interval's first tick.
 if (aquariumIsEnabled()) {

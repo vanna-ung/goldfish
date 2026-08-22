@@ -91,5 +91,10 @@ const SASS_PADDING = "4px 14px";
 
 // The composer's own width doesn't line up with the wider transcript
 // column here, so a glass panel sized exactly to the composer cuts
-// across message text at its edges. Pulling each side in by 10px.
-const GLASS_WIDTH_INSET_PX = 10;
+// across message text at its edges. A first attempt narrowed it, which
+// was backwards — measured live (.response-container/.conversation-
+// container rects vs the composer's stable-anchor rect): the transcript
+// column is 32px WIDER than the composer on each side, symmetrically
+// (722px column vs 660px composer, both centered the same). Negative
+// inset widens instead of narrows, by exactly that measured amount.
+const GLASS_WIDTH_INSET_PX = -32;

@@ -38,7 +38,7 @@ const AQUARIUM_ESTABLISHED_TOP_OFFSET_PX = 72;
 // Glass sits this many px below wherever water's own top lands, so the
 // two lines don't sit exactly flush.
 const AQUARIUM_GLASS_EXTRA_TOP_PX = 5;
-const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 10, 2: 8, 3: 6, 4: 4, 5: 2 };
+const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 16, 2: 8, 3: 6, 4: 4, 5: 2 };
 // Each fish is either original pace (spawnSwimmer()'s own default,
 // which lobster still uses unchanged) or the faster pace requested
 // afterward — a 50/50 mix rather than every fish moving uniformly

@@ -4,7 +4,12 @@
   "version": "0.1.0",
   "description": "Tracks the water cost of your AI prompts.",
   "permissions": ["storage", "alarms"],
-  "host_permissions": ["https://claude.ai/*", "https://chatgpt.com/*", "https://chat.openai.com/*"],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*"
+  ],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
@@ -16,13 +21,23 @@
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "js": ["platform-chatgpt.js", "content.js", "aquarium.js", "games.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["platform-gemini.js", "content.js", "aquarium.js", "games.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": { "default_popup": "popup.html" },
   "web_accessible_resources": [
     {
       "resources": ["assets/fish/*", "assets/numbers/*", "assets/aquarium/*", "assets/usage/*"],
-      "matches": ["https://claude.ai/*", "https://chatgpt.com/*", "https://chat.openai.com/*"]
+      "matches": [
+        "https://claude.ai/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
+      ]
     }
   ]
 }

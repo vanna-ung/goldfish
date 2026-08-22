@@ -6,8 +6,9 @@
 //
 // Multiple files in one manifest content_scripts entry share the same JS
 // execution context (like separate <script> tags on one page), so this
-// reads `lastPhase` and `extensionEnabled` directly from content.js — no
-// message passing needed, and no changes to content.js required.
+// reads `lastPhase`, `extensionEnabled`, `findComposer`, and
+// `anchorRectFor` directly from content.js — no message passing needed,
+// no changes to content.js required.
 //
 // Scoping: verified live that claude.ai renders the sidebar and the chat
 // area as SEPARATE elements — <aside class="dframe-sidebar"> sits on top
@@ -15,10 +16,7 @@
 // width underneath it. That means clearing main's own background and
 // inserting the aquarium as its first child scopes everything to the chat
 // area automatically: the sidebar is a different element entirely and is
-// never touched by this. (An earlier whole-page attempt tried clearing
-// <body>'s background instead — that did nothing, because body isn't
-// actually where the opaque paint happens; three separate panels are.
-// Scoping to just `main` avoids needing to know or touch any of that.)
+// never touched by this.
 const CHAT_MAIN_SELECTOR = "main.dframe-content";
 
 // phase 1 = water occupies most of the chat area (line near the top,
@@ -27,6 +25,9 @@ const CHAT_MAIN_SELECTOR = "main.dframe-content";
 // own height, not the viewport.
 const AQUARIUM_WATER_TOP_BY_PHASE = { 1: 10, 2: 27.5, 3: 45, 4: 62.5, 5: 80 };
 const AQUARIUM_FISH_COUNT_BY_PHASE = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
+const AQUARIUM_BUBBLE_TARGET = 5;
+const AQUARIUM_FISH_VARIANTS = 3; // fish1.PNG..fish3.PNG
+const AQUARIUM_BUBBLE_VARIANTS = 4; // bubble1.PNG..bubble4.PNG
 
 // Cached per chat-main element (see findChatMain) rather than read once at
 // script load — claude.ai's SPA can swap in a new <main>, and that fresh
@@ -47,15 +48,34 @@ function findChatMain() {
   return document.querySelector(CHAT_MAIN_SELECTOR);
 }
 
+function aquariumAssetUrl(file) {
+  return chrome.runtime.getURL(`assets/aquarium/${file}`);
+}
+
+// A NEW chat has the composer centered on the page, no ancestor uses
+// sticky positioning. An ESTABLISHED chat docks the composer to the
+// bottom via a `position: sticky` wrapper partway up the tree — verified
+// live on both layouts. Used to decide whether fish/bubbles should be
+// swimming (new chat) or the tank should just be still water (scrolling
+// through history).
+function isEstablishedChat() {
+  const composer = typeof findComposer === "function" ? findComposer() : null;
+  if (!composer) return false;
+  let el = composer.parentElement;
+  for (let i = 0; i < 14 && el; i++) {
+    if (window.getComputedStyle(el).position === "sticky") return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 function injectAquariumStyles() {
   if (document.getElementById("aquarium-style")) return;
   const style = document.createElement("style");
   style.id = "aquarium-style";
   style.textContent = `
-    @keyframes aquarium-swim-right { from { left: -40px; } to { left: 100%; } }
-    @keyframes aquarium-swim-left { from { right: -40px; } to { right: 100%; } }
     @keyframes aquarium-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
-    @keyframes aquarium-wave-scroll { from { background-position-x: 0; } to { background-position-x: 40px; } }
+    @keyframes aquarium-wave-scroll { from { background-position-x: 0; } to { background-position-x: 36px; } }
   `;
   document.head.appendChild(style);
 }
@@ -92,21 +112,13 @@ function injectAquarium() {
   water.id = "aquarium-water";
   Object.assign(water.style, {
     position: "absolute",
-    // Widened 10% past each side rather than flush with the layer: at a
-    // few degrees of tilt (see the mousemove handler below), a
-    // flush-width rectangle can swing a top corner past the container's
-    // edge. The extra margin keeps it covered at any angle we actually use.
-    left: "-10%",
-    right: "-10%",
+    left: "0",
+    right: "0",
     bottom: "0",
     top: "100%", // starts fully drained — see the fill-up animation below
     background: "linear-gradient(180deg, rgba(126,200,242,0.55) 0%, rgba(74,144,217,0.55) 100%)",
     transition: "top 800ms ease",
-    // Pivot at the BOTTOM, not the top: water sloshes with its base
-    // anchored and the surface tilting, not the other way around. With a
-    // top pivot, tilting right lifts the bottom-left corner away from the
-    // container's bottom edge and exposes the backdrop underneath it.
-    transformOrigin: "50% 100%",
+    overflow: "hidden",
   });
   layer.appendChild(water);
 
@@ -118,20 +130,19 @@ function injectAquarium() {
     position: "absolute",
     left: "0",
     right: "0",
-    top: "-8px",
-    height: "16px",
-    backgroundImage:
-      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='16' viewBox='0 0 40 16'%3E%3Cpath d='M0 8 Q10 0 20 8 T40 8 V16 H0 Z' fill='%237ec8f2'/%3E%3C/svg%3E\")",
+    top: "-18px",
+    height: "36px",
+    backgroundImage: `url(${aquariumAssetUrl("wave.PNG")})`,
     backgroundRepeat: "repeat-x",
-    backgroundSize: "40px 16px",
-    opacity: "0.8",
+    backgroundSize: "36px 36px",
+    opacity: "0.85",
     animation: "aquarium-wave-scroll 2.5s linear infinite",
   });
   water.appendChild(wave);
 
   for (let i = 0; i < 3; i++) {
     const frond = document.createElement("div");
-    frond.textContent = "〰️";
+    frond.textContent = "〰️"; // placeholder until real seaweed art lands
     Object.assign(frond.style, {
       position: "absolute",
       bottom: "0",
@@ -142,6 +153,31 @@ function injectAquarium() {
     });
     water.appendChild(frond);
   }
+
+  // Liquid-glass panel: a frosted strip sitting ON TOP of the water (and
+  // the fish/bubbles inside it) but BEHIND the real chat text — it's a
+  // sibling of `water`, appended after it, both inside `layer`, so it
+  // paints over the water while `layer` as a whole stays behind main's
+  // real content (see positionGlassPanel for sizing). Fixed span from
+  // roughly where phase-1's water line sits down to the composer — it's
+  // the tank's glass wall, visible whether or not water currently reaches
+  // that high, not a mask that tracks the current water level.
+  const glass = document.createElement("div");
+  glass.id = "aquarium-glass";
+  Object.assign(glass.style, {
+    position: "absolute",
+    left: "50%",
+    transform: "translateX(-50%)",
+    top: `${AQUARIUM_WATER_TOP_BY_PHASE[1]}%`,
+    bottom: "0",
+    width: "780px",
+    maxWidth: "90%",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    background: "rgba(255,255,255,0.28)",
+    pointerEvents: "none",
+  });
+  layer.appendChild(glass);
 
   main.insertBefore(layer, main.firstChild); // first child = behind all real content
 
@@ -178,54 +214,154 @@ function updateAquariumWaterLevel() {
   water.style.top = `${AQUARIUM_WATER_TOP_BY_PHASE[aquariumPhase()] ?? 10}%`;
 }
 
-// ---- Mouse tilt ----
-// Stand-in for a laptop gyroscope/accelerometer: most laptops don't expose
-// device-orientation data to the browser at all (that's a phone API), so
-// this uses cursor position instead — same "reactive water" feel, works
-// on every machine regardless of hardware.
-document.addEventListener("mousemove", (e) => {
-  if (!aquariumIsEnabled()) return;
-  const main = findChatMain();
-  const water = document.querySelector("#water-aquarium #aquarium-water");
-  if (!main || !water) return;
-  const rect = main.getBoundingClientRect();
-  const fraction = (e.clientX - rect.left) / rect.width - 0.5; // -0.5..0.5 across the chat area
-  water.style.transform = `rotate(${fraction * 4}deg)`; // max ~2deg either way, subtle
-});
+// Glass panel's width tracks the composer's own width ("from each end of
+// the prompt box"), re-synced periodically rather than every frame — it
+// doesn't need to be pixel-perfect live, just roughly matched.
+function positionGlassPanel() {
+  const glass = document.querySelector("#water-aquarium #aquarium-glass");
+  if (!glass) return;
+  const composer = typeof findComposer === "function" ? findComposer() : null;
+  const rect = composer && typeof anchorRectFor === "function" ? anchorRectFor(composer) : null;
+  if (rect && rect.width > 0) {
+    glass.style.width = `${rect.width}px`;
+  }
+}
 
 // ---- Swimming fish ----
-// Placeholder emoji sprites in the asciiquarium spirit (simple silhouettes
-// drifting across at varying depths) — not a port of that project, which
-// is a Perl/terminal app with no direct web equivalent, just the same
-// visual idea rebuilt for CSS. Count drops as the phase rises.
-const AQUARIUM_FISH_EMOJI = ["🐟", "🐠"];
+// Real art: assets/aquarium/fish1.PNG..fish3.PNG. Each fish gets its own
+// independent requestAnimationFrame loop (not a CSS keyframe) so it can
+// pick a random speed and optionally reverse direction partway across,
+// rather than always crossing edge-to-edge in a straight line.
 
 function spawnFish() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
-  const fish = document.createElement("div");
-  fish.textContent = AQUARIUM_FISH_EMOJI[Math.floor(Math.random() * AQUARIUM_FISH_EMOJI.length)];
-  const goingRight = Math.random() < 0.5;
-  Object.assign(fish.style, {
+
+  const img = document.createElement("img");
+  const variant = 1 + Math.floor(Math.random() * AQUARIUM_FISH_VARIANTS);
+  img.src = aquariumAssetUrl(`fish${variant}.PNG`);
+  img.dataset.aquariumFish = "true";
+  const size = 24 + Math.random() * 18;
+  img.width = size;
+  img.height = size;
+  Object.assign(img.style, {
     position: "absolute",
     top: `${15 + Math.random() * 70}%`,
-    fontSize: `${20 + Math.random() * 10}px`,
-    transform: goingRight ? "scaleX(1)" : "scaleX(-1)",
-    animation: `${goingRight ? "aquarium-swim-right" : "aquarium-swim-left"} ${12 + Math.random() * 10}s linear`,
+    pointerEvents: "none",
   });
-  if (goingRight) fish.style.left = "-40px";
-  else fish.style.right = "-40px";
-  fish.addEventListener("animationend", () => fish.remove());
-  fish.dataset.aquariumFish = "true";
-  water.appendChild(fish);
+  water.appendChild(img);
+
+  const containerWidth = water.clientWidth || 400;
+  let goingRight = Math.random() < 0.5;
+  let x = goingRight ? -size : containerWidth + size;
+  const speed = 20 + Math.random() * 35; // px/sec
+  const willReverse = Math.random() < 0.35; // some fish turn around mid-swim
+  const reverseX = containerWidth * (0.3 + Math.random() * 0.4);
+  let hasReversed = false;
+
+  img.style.transform = goingRight ? "scaleX(1)" : "scaleX(-1)";
+  img.style.left = `${x}px`;
+
+  let lastTime = performance.now();
+  function step(now) {
+    if (!img.isConnected) return; // removed already (teardown, established chat, etc.)
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+    x += (goingRight ? 1 : -1) * speed * dt;
+
+    if (willReverse && !hasReversed && ((goingRight && x >= reverseX) || (!goingRight && x <= reverseX))) {
+      goingRight = !goingRight;
+      hasReversed = true;
+      img.style.transform = goingRight ? "scaleX(1)" : "scaleX(-1)";
+    }
+
+    img.style.left = `${x}px`;
+
+    if (x < -size - 20 || x > containerWidth + size + 20) {
+      img.remove();
+      return;
+    }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
 }
 
 function maintainFishPopulation() {
   const water = document.querySelector("#water-aquarium #aquarium-water");
   if (!water) return;
+
+  // Established chat = just water, no fish (see isEstablishedChat above).
+  if (isEstablishedChat()) {
+    water.querySelectorAll('[data-aquarium-fish="true"]').forEach((f) => f.remove());
+    return;
+  }
+
   const target = AQUARIUM_FISH_COUNT_BY_PHASE[aquariumPhase()] ?? 5;
   const current = water.querySelectorAll('[data-aquarium-fish="true"]').length;
   if (current < target) spawnFish();
+}
+
+// ---- Rising bubbles ----
+// Real art: assets/aquarium/bubble1.PNG..bubble4.PNG. Rise from the
+// bottom, shrinking as they go.
+
+function spawnBubble() {
+  const water = document.querySelector("#water-aquarium #aquarium-water");
+  if (!water) return;
+
+  const img = document.createElement("img");
+  const variant = 1 + Math.floor(Math.random() * AQUARIUM_BUBBLE_VARIANTS);
+  img.src = aquariumAssetUrl(`bubble${variant}.PNG`);
+  img.dataset.aquariumBubble = "true";
+  const startSize = 10 + Math.random() * 10;
+  Object.assign(img.style, {
+    position: "absolute",
+    left: `${5 + Math.random() * 90}%`,
+    bottom: "0px",
+    pointerEvents: "none",
+  });
+  img.width = startSize;
+  img.height = startSize;
+  water.appendChild(img);
+
+  const containerHeight = water.clientHeight || 300;
+  let y = 0;
+  const speed = 20 + Math.random() * 25; // px/sec upward
+  let lastTime = performance.now();
+
+  function step(now) {
+    if (!img.isConnected) return;
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+    y += speed * dt;
+    const progress = Math.min(1, y / containerHeight);
+    const size = Math.max(2, startSize * (1 - progress * 0.7)); // shrinks to ~30% at the top
+    img.width = size;
+    img.height = size;
+    img.style.bottom = `${y}px`;
+    img.style.opacity = String(1 - progress * 0.3);
+
+    if (y > containerHeight + 10) {
+      img.remove();
+      return;
+    }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function maintainBubblePopulation() {
+  const water = document.querySelector("#water-aquarium #aquarium-water");
+  if (!water) return;
+
+  // Same rule as fish — established chat is just still water.
+  if (isEstablishedChat()) {
+    water.querySelectorAll('[data-aquarium-bubble="true"]').forEach((b) => b.remove());
+    return;
+  }
+
+  const current = water.querySelectorAll('[data-aquarium-bubble="true"]').length;
+  if (current < AQUARIUM_BUBBLE_TARGET) spawnBubble();
 }
 
 injectAquariumStyles();
@@ -237,13 +373,17 @@ setInterval(() => {
   }
   const freshlyInjected = injectAquarium();
   if (!freshlyInjected) updateAquariumWaterLevel();
+  positionGlassPanel();
   maintainFishPopulation();
+  maintainBubblePopulation();
 }, 3000);
 
 // First paint doesn't wait for the interval's first tick.
 if (aquariumIsEnabled()) {
   injectAquarium();
+  positionGlassPanel();
   maintainFishPopulation();
+  maintainBubblePopulation();
 }
 
 console.log("[aquarium] injected");

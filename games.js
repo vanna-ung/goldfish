@@ -45,9 +45,8 @@ function injectGameStyles() {
     }
     #water-overlay button.primary:disabled { opacity: 0.5; cursor: default; }
     #water-overlay input[type="number"] {
-      width: 32px; height: 32px; font-size: 15px; padding: 0; text-align: center;
-      border: none; background-color: transparent;
-      background-repeat: no-repeat; background-position: center; background-size: contain;
+      width: 40px; height: 28px; font-size: 16px; padding: 0; text-align: center;
+      border: none; border-bottom: 2px solid #4a90d9; background: transparent;
       -moz-appearance: textfield;
     }
     #water-overlay input[type="number"]::-webkit-outer-spin-button,
@@ -72,11 +71,12 @@ function injectOverlay() {
     alignItems: "center",
     justifyContent: "center",
     gap: "12px",
-    background: "rgba(252,252,251,0.97)",
-    border: "2px solid #4a90d9",
-    borderRadius: "12px",
+    // question box.PNG frames the whole panel now, not individual tiles —
+    // stretched to fill since it's meant to work as a resizable frame.
+    backgroundImage: `url(${numberAssetUrl(ANSWER_BOX_FILE)})`,
+    backgroundSize: "100% 100%",
+    backgroundRepeat: "no-repeat",
     padding: "16px",
-    boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
     overflow: "auto",
     pointerEvents: "auto",
   });

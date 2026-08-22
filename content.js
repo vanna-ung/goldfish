@@ -142,7 +142,7 @@ function updateBucket(state) {
   renderFishbowlStage(state.remaining);
   readout.innerHTML = state.capped
     ? "Bucket empty — earn another prompt"
-    : `<strong>${state.remaining}</strong> prompts left`;
+    : `<strong>${state.remaining}</strong> prompt${state.remaining === 1 ? "" : "s"} left`;
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.

@@ -359,7 +359,10 @@ function positionUsageTracker() {
   if (!el || !bucket) return;
   const rect = bucket.getBoundingClientRect();
   el.style.left = `${rect.left}px`;
-  el.style.top = `${rect.bottom + 8}px`;
+  // Tight gap — the bucket already has its own 8px padding below the
+  // fishbowl art, so much more than a couple px here reads as a big
+  // detached gap between the image and "mL used today" underneath it.
+  el.style.top = `${rect.bottom + 2}px`;
 }
 
 function updateBucket(state) {

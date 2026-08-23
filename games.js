@@ -546,18 +546,21 @@ function startMemoryGame(root) {
   const TILE_COUNT = 6;
   const FISH_COUNT = 3;
   const REVEAL_MS = 2000;
+  const TOTAL_ROUNDS = 5;
+  let roundIndex = 0; // rounds WON so far — a miss retries the same round, doesn't advance this
   let fishIndices = new Set();
   let selected = new Set();
   let revealing = true;
 
   root.innerHTML = `
-    <div style="font-size:13px;color:#2a5f8f;text-align:center;">Remember which tiles have the fish</div>
+    <div style="font-size:13px;color:#2a5f8f;text-align:center;">Remember which tiles have the fish (<span id="mem-progress">1</span>/${TOTAL_ROUNDS})</div>
     <div id="mem-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
     <button id="mem-submit" class="primary" disabled>Check</button>
     <div id="mem-feedback" style="font-size:12px;color:#888;min-height:16px;text-align:center;"></div>
   `;
 
   const gridEl = root.querySelector("#mem-grid");
+  const progressEl = root.querySelector("#mem-progress");
   const submitEl = root.querySelector("#mem-submit");
   const feedbackEl = root.querySelector("#mem-feedback");
 
@@ -597,6 +600,7 @@ function startMemoryGame(root) {
     renderTiles();
     submitEl.disabled = true;
     feedbackEl.textContent = "";
+    progressEl.textContent = String(roundIndex + 1);
     setTimeout(() => {
       revealing = false;
       renderTiles();
@@ -606,8 +610,10 @@ function startMemoryGame(root) {
   submitEl.addEventListener("click", () => {
     const correct = selected.size === fishIndices.size && [...selected].every((i) => fishIndices.has(i));
     if (correct) {
+      roundIndex++;
       feedbackEl.textContent = "Got it!";
-      earnPromptAndClose();
+      if (roundIndex >= TOTAL_ROUNDS) earnPromptAndClose();
+      else startRound();
     } else {
       feedbackEl.textContent = "Not quite — watch again.";
       startRound();

@@ -103,10 +103,11 @@ let extensionEnabled = true;
 // shows; this image purely visualizes cumulative usage.
 //
 // Stage 0 = nothing sent, ever. Stage 1 = right after the very first
-// prompt. Stages 2-8 each need two MORE prompts past the previous stage
-// (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 total sent). Stage 8 is
-// terminal — stays there rather than climbing further.
-const USAGE_MAX_STAGE = 8;
+// prompt. Stages 2-10 each need two MORE prompts past the previous
+// stage (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 -> 17 -> 19 total
+// sent). Stage 10 is terminal — stays there rather than climbing
+// further. Assets: assets/usage/0.PNG through 10.PNG.
+const USAGE_MAX_STAGE = 10;
 
 function usageStageFor(totalPromptsSent) {
   const total = totalPromptsSent || 0;
@@ -358,7 +359,10 @@ function positionUsageTracker() {
   if (!el || !bucket) return;
   const rect = bucket.getBoundingClientRect();
   el.style.left = `${rect.left}px`;
-  el.style.top = `${rect.bottom + 8}px`;
+  // Tight gap — the bucket already has its own 8px padding below the
+  // fishbowl art, so much more than a couple px here reads as a big
+  // detached gap between the image and "mL used today" underneath it.
+  el.style.top = `${rect.bottom + 2}px`;
 }
 
 function updateBucket(state) {
@@ -629,6 +633,14 @@ function teardownAll() {
   stopPositionLoop();
   stopBucketPositionLoop();
   lastPhase = 0;
+  // Also reset here, not just hidePhaseUI() — teardownAll() destroys
+  // the #water-fish element outright and bootUp() creates a fresh one
+  // with no src set. If lastReactionPhase were left stale (e.g. still
+  // 0 from before teardown) and the phase on re-enable is also 0,
+  // updatePhaseUI()'s phase !== lastReactionPhase guard would never
+  // fire, so renderFishPlaceholder() never runs and the new <img>
+  // never gets a src — a broken-image icon instead of the fish.
+  lastReactionPhase = -1;
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");
   const readout = document.getElementById("water-readout");

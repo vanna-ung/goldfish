@@ -383,8 +383,20 @@ function updateBucket(state) {
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.
+  // updateBucket() runs in RECORD_PROMPT's async callback, which can
+  // resolve before claude.ai's own send handler has actually cleared
+  // the composer's text yet — reading it right here can still see the
+  // just-sent prompt's full length, locking the phase (and the
+  // aquarium's water level, which tracks it) at whatever it was for a
+  // 500-char prompt instead of resetting to empty. A short follow-up
+  // check catches the composer once it's actually settled, in addition
+  // to the immediate one for the common case where it's already cleared.
   const composer = findComposer();
   updatePhaseUI(effectiveTypingLength(composer), composer);
+  setTimeout(() => {
+    const c = findComposer();
+    updatePhaseUI(effectiveTypingLength(c), c);
+  }, 200);
 }
 
 // ---- Fish placeholder + sass comment (typing-length phase) ----

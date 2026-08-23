@@ -630,6 +630,14 @@ function teardownAll() {
   stopPositionLoop();
   stopBucketPositionLoop();
   lastPhase = 0;
+  // Also reset here, not just hidePhaseUI() — teardownAll() destroys
+  // the #water-fish element outright and bootUp() creates a fresh one
+  // with no src set. If lastReactionPhase were left stale (e.g. still
+  // 0 from before teardown) and the phase on re-enable is also 0,
+  // updatePhaseUI()'s phase !== lastReactionPhase guard would never
+  // fire, so renderFishPlaceholder() never runs and the new <img>
+  // never gets a src — a broken-image icon instead of the fish.
+  lastReactionPhase = -1;
   lastComment = "";
   const bucket = document.getElementById("water-tracker-bucket");
   const readout = document.getElementById("water-readout");

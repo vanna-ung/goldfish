@@ -32,12 +32,21 @@ const PHASE_BOUNDS = [100, 200, 300, 400, 500];
 // an instant phase-5 hit, matching "lecture slides are huge."
 const ATTACHMENT_LENGTH_WEIGHT = 500;
 
-function attachmentCount() {
-  return document.querySelectorAll(ATTACHMENT_SELECTOR).length;
+// Scoped to the composer's own stable anchor (the bordered "prompt box"
+// container), not the whole page — an unscoped document-wide search
+// also matches an ALREADY-SENT message's own rendered attachment
+// thumbnail sitting in the chat history, which never goes away. That
+// permanently inflated the effective length long after the composer
+// itself was empty again, pinning the typing phase (and the aquarium
+// water level that tracks it) at whatever the original large/attached
+// prompt mapped to.
+function attachmentCount(composer) {
+  const scope = findStableAnchor(composer) || document;
+  return scope.querySelectorAll(ATTACHMENT_SELECTOR).length;
 }
 
 function effectiveTypingLength(composer) {
-  return composerCharCount(composer) + attachmentCount() * ATTACHMENT_LENGTH_WEIGHT;
+  return composerCharCount(composer) + attachmentCount(composer) * ATTACHMENT_LENGTH_WEIGHT;
 }
 
 function phaseForLength(len) {

@@ -19,7 +19,3 @@ After any code change: click the reload icon on the extension card in `chrome://
 - `popup.html` / `popup.js` — toolbar popup UI
 - `games/` — unlock mini-games
 - `assets/` — icons, images
-
-## Plan
-
-Full build plan (phases, hour budget, cut list) lives in the team doc — see [docs/PLAN.md](docs/PLAN.md).

@@ -103,10 +103,11 @@ let extensionEnabled = true;
 // shows; this image purely visualizes cumulative usage.
 //
 // Stage 0 = nothing sent, ever. Stage 1 = right after the very first
-// prompt. Stages 2-8 each need two MORE prompts past the previous stage
-// (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 total sent). Stage 8 is
-// terminal — stays there rather than climbing further.
-const USAGE_MAX_STAGE = 8;
+// prompt. Stages 2-10 each need two MORE prompts past the previous
+// stage (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 -> 17 -> 19 total
+// sent). Stage 10 is terminal — stays there rather than climbing
+// further. Assets: assets/usage/0.PNG through 10.PNG.
+const USAGE_MAX_STAGE = 10;
 
 function usageStageFor(totalPromptsSent) {
   const total = totalPromptsSent || 0;

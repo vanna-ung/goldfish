@@ -32,12 +32,21 @@ const PHASE_BOUNDS = [100, 200, 300, 400, 500];
 // an instant phase-5 hit, matching "lecture slides are huge."
 const ATTACHMENT_LENGTH_WEIGHT = 500;
 
-function attachmentCount() {
-  return document.querySelectorAll(ATTACHMENT_SELECTOR).length;
+// Scoped to the composer's own stable anchor (the bordered "prompt box"
+// container), not the whole page — an unscoped document-wide search
+// also matches an ALREADY-SENT message's own rendered attachment
+// thumbnail sitting in the chat history, which never goes away. That
+// permanently inflated the effective length long after the composer
+// itself was empty again, pinning the typing phase (and the aquarium
+// water level that tracks it) at whatever the original large/attached
+// prompt mapped to.
+function attachmentCount(composer) {
+  const scope = findStableAnchor(composer) || document;
+  return scope.querySelectorAll(ATTACHMENT_SELECTOR).length;
 }
 
 function effectiveTypingLength(composer) {
-  return composerCharCount(composer) + attachmentCount() * ATTACHMENT_LENGTH_WEIGHT;
+  return composerCharCount(composer) + attachmentCount(composer) * ATTACHMENT_LENGTH_WEIGHT;
 }
 
 function phaseForLength(len) {
@@ -383,8 +392,20 @@ function updateBucket(state) {
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.
+  // updateBucket() runs in RECORD_PROMPT's async callback, which can
+  // resolve before claude.ai's own send handler has actually cleared
+  // the composer's text yet — reading it right here can still see the
+  // just-sent prompt's full length, locking the phase (and the
+  // aquarium's water level, which tracks it) at whatever it was for a
+  // 500-char prompt instead of resetting to empty. A short follow-up
+  // check catches the composer once it's actually settled, in addition
+  // to the immediate one for the common case where it's already cleared.
   const composer = findComposer();
   updatePhaseUI(effectiveTypingLength(composer), composer);
+  setTimeout(() => {
+    const c = findComposer();
+    updatePhaseUI(effectiveTypingLength(c), c);
+  }, 200);
 }
 
 // ---- Fish placeholder + sass comment (typing-length phase) ----

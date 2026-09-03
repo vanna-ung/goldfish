@@ -644,11 +644,13 @@ const STACK_ITEM_GAP = 8; // vertical gap between stacked items
 const STACK_EDGE_MARGIN = 20; // keep the stack this far off the composer / screen edges
 const SASS_MAX_WIDTH = 420; // the comment box never grows wider than this
 
-// The bubbles + comment anchor to a FIXED slot above the composer, not to
-// the fish's live height — otherwise the fish growing (150 -> 220 the
-// moment the user types) shoves the whole stack upward. Reserve the
-// largest reaction size so the biggest fish still clears the bubbles.
-const SPEECH_FISH_SLOT = Math.max(DEFAULT_REACTION_SIZE, ...Object.values(REACTION_IMAGE_SIZE));
+// The bubbles + comment anchor to a FIXED gap above the composer's bottom
+// edge, not to the fish's live height — otherwise the fish growing
+// (150 -> 220 the moment the user types) shoves the whole stack upward.
+// Not the full reaction box (the art doesn't fill it, and reserving 220
+// left the bubbles floating way above the fish) — tuned so bubble1
+// nestles near the fish's head in every reaction size.
+const SPEECH_FISH_SLOT = 150;
 
 function injectBubbles() {
   for (const [id, file, size] of [

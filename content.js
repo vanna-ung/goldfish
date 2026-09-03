@@ -194,6 +194,12 @@ const BUCKET_GAP_BELOW_COMPOSER =
 // lines up with the "prompts left" pill.
 const BUCKET_PADDING_PX = 8;
 
+// The bottle drawing in assets/usage/*.PNG isn't centred in its own
+// canvas — measured ~5.75% (≈9px at the 160px render) left of centre. The
+// "mL used today" box centres on the container, so nudge it left by the
+// same amount to line up with the visible bottle.
+const BOTTLE_ART_X_OFFSET = -9;
+
 // The fishbowl and the "mL used today" box live in the far-left page
 // margin, where a peek/expanded sidebar can render over them. Rather than
 // fight it with z-index (Claude's hover-peek panel isn't caught by
@@ -503,9 +509,10 @@ function positionUsageTracker() {
   if (!composerRect) return;
   const bucketRect = bucket.getBoundingClientRect();
 
-  // Centered on the fishbowl's own horizontal center (the fishbowl itself
-  // is centered in the sidebar->composer gap).
-  el.style.left = `${bucketRect.left + bucketRect.width / 2 - el.offsetWidth / 2}px`;
+  // Centered on the visible bottle (the fishbowl is centered in the
+  // sidebar->composer gap; BOTTLE_ART_X_OFFSET corrects for the bottle
+  // not being centered within its own PNG).
+  el.style.left = `${bucketRect.left + bucketRect.width / 2 - el.offsetWidth / 2 + BOTTLE_ART_X_OFFSET}px`;
 
   // Same in every chat state: the box's BOTTOM edge lines up with the
   // prompt box's bottom edge. (Established chats used to compute this off
@@ -637,6 +644,15 @@ const STACK_ITEM_GAP = 8; // vertical gap between stacked items
 const STACK_EDGE_MARGIN = 20; // keep the stack this far off the composer / screen edges
 const SASS_MAX_WIDTH = 420; // the comment box never grows wider than this
 
+// The bubbles + comment anchor to a FIXED slot above the composer, not to
+// the fish's live height — otherwise the fish growing (150 -> 220 the
+// moment the user types) shoves the whole stack upward. Reserve the
+// largest reaction size so the biggest fish still clears the bubbles.
+const SPEECH_FISH_SLOT = Math.max(DEFAULT_REACTION_SIZE, ...Object.values(REACTION_IMAGE_SIZE));
+// The comment box is top-anchored inside a fixed reserve and grows
+// DOWNWARD for long text, so its top edge stays put as the user types.
+const SPEECH_COMMENT_SLOT = 40;
+
 function injectBubbles() {
   for (const [id, file, size] of [
     ["water-bubble-small", BUBBLE_SMALL_FILE, BUBBLE_SMALL_SIZE],
@@ -687,15 +703,18 @@ function positionSpeechStack(composerRect) {
     sass.style.maxWidth = `${Math.min(SASS_MAX_WIDTH, Math.max(140, fitted))}px`;
   }
 
-  // Walk upward from the composer's bottom edge. `cursor` is always the y
-  // of the bottom edge of the next item to place.
-  let cursor = composerRect.bottom;
-
+  // Fish keeps its real (phase-dependent) size, bottom pinned to the
+  // composer's bottom edge — so it can grow/shrink without dragging the
+  // rest of the stack with it.
   const fishH = fish.getBoundingClientRect().height || DEFAULT_REACTION_SIZE;
   const fishW = fish.offsetWidth || DEFAULT_REACTION_SIZE;
   fish.style.left = `${centerX - fishW / 2}px`;
-  fish.style.top = `${cursor - fishH}px`;
-  cursor -= fishH + STACK_ITEM_GAP;
+  fish.style.top = `${composerRect.bottom - fishH}px`;
+
+  // Everything above the fish is laid out against a FIXED slot, so it
+  // stays put as the user types (fish size change, longer comment, ...).
+  // `cursor` = y of the bottom edge of the next item, walking upward.
+  let cursor = composerRect.bottom - SPEECH_FISH_SLOT - STACK_ITEM_GAP;
 
   if (bubbleSmall) {
     bubbleSmall.style.left = `${centerX - BUBBLE_SMALL_SIZE / 2}px`;
@@ -708,9 +727,9 @@ function positionSpeechStack(composerRect) {
     cursor -= BUBBLE_LARGE_SIZE + STACK_ITEM_GAP;
   }
   if (sass) {
-    const rect = sass.getBoundingClientRect();
-    sass.style.left = `${centerX - rect.width / 2}px`;
-    sass.style.top = `${cursor - rect.height}px`;
+    // Top-anchored inside SPEECH_COMMENT_SLOT: fixed top edge, grows down.
+    sass.style.left = `${centerX - sass.getBoundingClientRect().width / 2}px`;
+    sass.style.top = `${cursor - SPEECH_COMMENT_SLOT}px`;
 
     // Same file-menu dodge as before: if the "+" attach menu opens over
     // the comment, hide it rather than let them overlap. visibility (not

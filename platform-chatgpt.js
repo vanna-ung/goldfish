@@ -55,21 +55,35 @@ const FISH_TOP_OFFSET = -15;
 // rendered height exactly.
 const HEADER_HEIGHT_PX = 52;
 
-// Re-verified with a signed-in session: ChatGPT's sidebar isn't one
-// consistent element. The icon-only rail (nav#stage-sidebar-tiny-bar)
-// is a fixed 52px, but the fuller panel (#stage-slideover-sidebar)
-// renders at different widths depending on state — measured live at
-// 52px, 187px, and 260px across collapsed/mid-toggle/expanded — without
-// cleanly mapping to one selector being "the" answer in every state.
-// Taking the widest of both candidates' current rects sidesteps having
-// to fully pin down which one is authoritative when: whichever is
-// actually widest right now IS the real visible boundary.
+// ChatGPT's sidebar isn't one consistent element and its ids churn
+// (#stage-slideover-sidebar -> #stage-popover-sidebar, plus an icon
+// rail nav#stage-sidebar-tiny-bar and a pinned panel at
+// var(--sidebar-width)). Verified live that <main>'s own left edge is
+// exactly the sidebar's right edge in every state — collapsed rail
+// (~52px) and pinned-open panel (~260px) alike — so key off that and
+// keep the rail/panel selectors only as a fallback for early paint.
+// The sidebar panel itself — #stage-slideover-sidebar is the current id
+// (#stage-popover-sidebar is a separate hover element); verified live at
+// 260px, z-index 21, opaque, left:0.
+const SIDEBAR_SELECTOR = "#stage-slideover-sidebar, #stage-popover-sidebar";
+
 function sidebarRightEdge() {
-  const candidates = [
-    document.querySelector("nav#stage-sidebar-tiny-bar"),
-    document.getElementById("stage-slideover-sidebar"),
-  ];
-  return candidates.reduce((max, el) => (el ? Math.max(max, el.getBoundingClientRect().right) : max), 0);
+  // <main>'s own left edge is exactly the sidebar's right edge in every
+  // state — verified live at 52 (icon rail) and 260 (expanded panel).
+  const main = document.querySelector("main");
+  if (main) {
+    const left = main.getBoundingClientRect().left;
+    if (left > 0 && left < window.innerWidth * 0.5) return left;
+  }
+  // Fallback for early paint before <main> lays out.
+  let max = 0;
+  for (const el of document.querySelectorAll(SIDEBAR_SELECTOR)) {
+    const r = el.getBoundingClientRect();
+    if (r.right > 0 && r.left > -1 && r.right < window.innerWidth * 0.5) {
+      max = Math.max(max, r.right);
+    }
+  }
+  return max;
 }
 
 // NOT main#main, and NOT [data-scroll-root] either — both tried and

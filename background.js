@@ -21,28 +21,14 @@ async function getTodayEntry() {
   return store[key] ?? { count: 0, bonus: 0 };
 }
 
-// Flat mL-per-prompt for the daily-tracker-turned-universal-tracker
-// widget under the fishbowl — a flat rate per prompt rather than
-// anything length-based, tracked off totalPromptsSent below so it's the
-// same "ever, everywhere" total as the lifetime usage fishbowl.
+// Flat mL-per-prompt for the usage widgets under the fishbowl — a flat
+// rate per prompt rather than anything length-based, multiplied by
+// today's send count (see getState) so it resets to zero at midnight
+// along with the daily cap.
 const ML_PER_PROMPT_USAGE = 5;
 
-// Lifetime count, never reset — a plain (non-dated) storage key, unlike
-// the daily entries. Drives the usage fishbowl (assets/usage/0-8.PNG)
-// specifically, which is deliberately independent of the daily cap: it's
-// "how much have you used, ever, everywhere" not "how many are left
-// today," so it stays the same across chats and across days.
-async function getTotalPromptsSent() {
-  const { totalPromptsSent } = await chrome.storage.local.get("totalPromptsSent");
-  return totalPromptsSent ?? 0;
-}
-
 async function getState() {
-  const [entry, cap, totalPromptsSent] = await Promise.all([
-    getTodayEntry(),
-    getDailyCap(),
-    getTotalPromptsSent(),
-  ]);
+  const [entry, cap] = await Promise.all([getTodayEntry(), getDailyCap()]);
   // `bonus` is prompts earned today via a minigame — added on top of the
   // configured cap, not saved into it, so it never carries over to
   // tomorrow and never touches the user's actual daily-limit setting.
@@ -56,18 +42,18 @@ async function getState() {
     remaining,
     fraction: effectiveCap > 0 ? remaining / effectiveCap : 0,
     capped: remaining <= 0,
-    totalPromptsSent,
-    mlUsed: totalPromptsSent * ML_PER_PROMPT_USAGE,
+    // Both usage widgets (the fishbowl image and the "mL used today"
+    // digits) are driven off entry.count — today's sends, keyed by date
+    // in getTodayEntry() — so they empty back out at midnight.
+    mlUsed: entry.count * ML_PER_PROMPT_USAGE,
   };
 }
 
 async function recordPrompt() {
   const key = todayKey();
   const entry = await getTodayEntry();
-  const total = await getTotalPromptsSent();
   await chrome.storage.local.set({
     [key]: { ...entry, count: entry.count + 1 },
-    totalPromptsSent: total + 1,
   });
   return getState();
 }

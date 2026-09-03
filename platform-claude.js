@@ -80,3 +80,10 @@ function findDisclaimerText(main) {
     (el) => el.children.length === 0 && /double-check responses/i.test(el.textContent || "")
   );
 }
+
+// Liquid-glass panel width (aquarium.js positionGlassPanel). The stable
+// anchor it sizes to is narrower than the visible prompt box, so the
+// glass sits inset from it — a negative value widens it back out on both
+// sides. Tune this number until the glass edges sit flush with the
+// prompt box.
+const GLASS_WIDTH_INSET_PX = -20;

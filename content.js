@@ -105,21 +105,19 @@ let extensionEnabled = true;
 
 // ---- Fishbowl ----
 
-// Universal usage fishbowl (assets/usage/0-8.PNG) — driven by
-// state.totalPromptsSent, a lifetime count that never resets and is the
-// same across every chat (see getTotalPromptsSent() in background.js).
-// Separate from the daily cap this widget's text readout below still
-// shows; this image purely visualizes cumulative usage.
+// Usage fishbowl (assets/usage/0-10.PNG) — driven by state.count, the
+// number of prompts sent TODAY (keyed by date in background.js), so it
+// empties back to stage 0 at midnight along with the daily cap.
 //
-// Stage 0 = nothing sent, ever. Stage 1 = right after the very first
-// prompt. Stages 2-10 each need two MORE prompts past the previous
-// stage (1 -> 3 -> 5 -> 7 -> 9 -> 11 -> 13 -> 15 -> 17 -> 19 total
-// sent). Stage 10 is terminal — stays there rather than climbing
-// further. Assets: assets/usage/0.PNG through 10.PNG.
+// Stage 0 = nothing sent yet today. Stage 1 = right after today's first
+// prompt. Each later stage needs two MORE prompts than the previous one
+// (1 -> 3 -> 5 -> 7 -> 9 ... sent today). Stage 10 is terminal — stays
+// there rather than climbing further. Assets: assets/usage/0.PNG
+// through 10.PNG.
 const USAGE_MAX_STAGE = 10;
 
-function usageStageFor(totalPromptsSent) {
-  const total = totalPromptsSent || 0;
+function usageStageFor(promptsToday) {
+  const total = promptsToday || 0;
   if (total <= 0) return 0;
   return Math.min(USAGE_MAX_STAGE, 1 + Math.floor((total - 1) / 2));
 }
@@ -133,11 +131,11 @@ function digitAssetUrl(digit) {
 }
 
 // Two separate elements, deliberately: the fishbowl image floats in the
-// gap to the LEFT of the composer (mirrors positionFish()'s gap on the
-// right), while the "X prompts left" line sits on its own line UNDER the
-// composer. They used to be one stacked container; splitting them apart
-// is what lets each sit where it visually belongs instead of dragging
-// the other along with it.
+// gap to the LEFT of the composer (mirrors the speech stack's gap on the
+// right — see positionSpeechStack), while the "X prompts left" line rides
+// the composer's top edge (see positionReadout). They used to be one
+// stacked container; splitting them apart is what lets each sit where it
+// visually belongs instead of dragging the other along with it.
 function injectBucket() {
   if (document.getElementById("water-tracker-bucket")) return;
 
@@ -151,8 +149,8 @@ function injectBucket() {
   Object.assign(container.style, {
     position: "fixed",
     // top/left set live by positionBucket() — see below
-    zIndex: 50,
-    padding: "8px",
+    zIndex: LEFT_WIDGET_Z,
+    padding: `${BUCKET_PADDING_PX}px`,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -162,12 +160,24 @@ function injectBucket() {
 
   const readout = document.createElement("div");
   readout.id = "water-readout";
+  // Same pill shape/size the sass comment box uses (see injectSass), but
+  // in the usage tracker's dark blue with white text instead of the
+  // comment's orange. Digits inside are drawn as number sprites — see
+  // renderReadout.
   Object.assign(readout.style, {
     position: "fixed",
     // top/left set live by positionReadout() — see below
     zIndex: 50,
-    font: "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-    color: "#2a5f8f",
+    boxSizing: "border-box",
+    background: READOUT_BG,
+    color: "#fff",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: `${READOUT_FONT_SIZE}px`,
+    padding: READOUT_PADDING,
+    borderRadius: READOUT_RADIUS,
+    maxWidth: "280px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+    whiteSpace: "nowrap",
   });
   document.body.appendChild(readout);
 }
@@ -178,6 +188,58 @@ function injectBucket() {
 // far from another's.
 const BUCKET_GAP_BELOW_COMPOSER =
   typeof READOUT_GAP_BELOW_COMPOSER !== "undefined" ? READOUT_GAP_BELOW_COMPOSER : 12;
+
+// Padding inside #water-tracker-bucket (see injectBucket) — positionBucket
+// subtracts it so the visible fishbowl art, not the padded box, is what
+// lines up with the "prompts left" pill.
+const BUCKET_PADDING_PX = 8;
+
+// The fishbowl and the "mL used today" box live in the far-left page
+// margin, where a peek/expanded sidebar can render over them. Rather than
+// fight it with z-index (Claude's hover-peek panel isn't caught by
+// sidebarRightEdge(), and low z-index hid them behind page chrome on
+// ChatGPT), positionBucket/positionUsageTracker hit-test their own centre
+// each frame and hide the widget whenever the sidebar is geometrically on
+// top of it — see sidebarOverlapsPoint().
+const LEFT_WIDGET_Z = 50;
+
+// Both readouts render as a dark-blue pill (the usage tracker's #2a5f8f)
+// with white text and white number sprites, at the sass comment box's
+// per-platform shape and text size.
+const READOUT_BG = "#2a5f8f";
+const READOUT_RADIUS = typeof SASS_BORDER_RADIUS !== "undefined" ? SASS_BORDER_RADIUS : "8px";
+
+// "Prompts left today" pill — compact: small number sprites, tight padding.
+const READOUT_PADDING = "3px 7px";
+const READOUT_FONT_SIZE = 11;
+const READOUT_DIGIT_SIZE = 11;
+
+// "mL used today" pill — the sass comment box's shape/size (unchanged).
+const USAGE_PADDING = typeof SASS_PADDING !== "undefined" ? SASS_PADDING : "6px 10px";
+const USAGE_FONT_SIZE = 14;
+const USAGE_DIGIT_SIZE = 15;
+
+// True when the platform's sidebar element is geometrically on top of
+// (x, y) — used to hide the far-left widgets when Claude's hover-peek
+// sidebar (or a pinned/expanded one) slides out over them. elementsFrom-
+// Point returns the whole hit stack regardless of paint order, so this
+// still reports the sidebar even while a widget is painting on top of it.
+function sidebarOverlapsPoint(x, y) {
+  const sel = typeof SIDEBAR_SELECTOR !== "undefined" ? SIDEBAR_SELECTOR : null;
+  if (!sel || !document.elementsFromPoint) return false;
+  return document
+    .elementsFromPoint(x, y)
+    .some((el) => el.closest && el.closest(sel));
+}
+
+// Hide the widget (without disturbing its display mode) when the sidebar
+// covers its centre; show it otherwise.
+function applySidebarOcclusion(el) {
+  const r = el.getBoundingClientRect();
+  el.style.visibility = sidebarOverlapsPoint(r.left + r.width / 2, r.top + r.height / 2)
+    ? "hidden"
+    : "";
+}
 
 function positionBucket() {
   const container = document.getElementById("water-tracker-bucket");
@@ -198,16 +260,20 @@ function positionBucket() {
   const gapCenter = (leftBoundary + composerRect.left) / 2;
   const width = container.offsetWidth || 160;
 
-  container.style.left = `${gapCenter - width / 2}px`;
+  // Clamp into the visible gap: never let it slide off the left edge or
+  // sit under the sidebar, even when the gap is narrower than the
+  // fishbowl (small window / wide or pinned sidebar). Better slightly
+  // overlapping the chat than gone.
+  const bucketLeft = Math.max(gapCenter - width / 2, leftBoundary + 4, 4);
+  container.style.left = `${bucketLeft}px`;
 
-  // Bottom-aligned with the composer's own bottom edge. Tried docking to
-  // the aquarium's sand strip instead, but sand sits at the very bottom
-  // of the visible chat area regardless of where the composer is — fine
-  // for an established chat (composer's already down there too), but it
-  // left the fishbowl stranded well below a NEW chat's vertically
-  // centered composer. Tracking the composer directly keeps it right
-  // where it visually belongs in both layouts.
-  container.style.top = `${composerRect.bottom - container.offsetHeight}px`;
+  // Vertically: the visible fishbowl art's bottom edge sits on the
+  // composer's own bottom edge (the "mL used today" pill goes just below
+  // that line — see positionUsageTracker). Subtract the container's
+  // bottom padding so it's the art that lines up, not the padded box.
+  container.style.top = `${composerRect.bottom - container.offsetHeight + BUCKET_PADDING_PX}px`;
+
+  applySidebarOcclusion(container);
 }
 
 // While a game screen is up, games.js takes over the readout's styling
@@ -222,14 +288,21 @@ function setReadoutGameMode(on) {
   const readout = document.getElementById("water-readout");
   if (!readout) return;
   if (on) {
+    // Centered heading above the game panel. Keeps the blue pill look
+    // (games only open from the capped state, whose message reads fine
+    // white-on-blue) but lets games.js size it to the panel width.
     readout.style.textAlign = "center";
     readout.style.fontSize = "14px";
     readout.style.fontWeight = "600";
+    readout.style.maxWidth = "none";
+    readout.style.whiteSpace = "";
   } else {
     readout.style.textAlign = "";
-    readout.style.fontSize = "12px";
+    readout.style.fontSize = `${READOUT_FONT_SIZE}px`;
     readout.style.fontWeight = "";
     readout.style.width = "";
+    readout.style.maxWidth = "280px";
+    readout.style.whiteSpace = "nowrap";
   }
 }
 
@@ -258,22 +331,20 @@ function positionReadout() {
   const composerRect = anchorRectFor(composer);
   if (!composerRect) return;
 
-  // Below the composer, left-aligned with its own left edge — same in
-  // both a new chat (composer centered) and an established one (docked
-  // bottom), since it's always relative to composerRect regardless of
-  // where that rect currently sits on screen.
+  // Straddles the composer's top edge — half above, half over the box —
+  // left-aligned with it. Always relative to composerRect, so it reads
+  // the same in a new chat (composer centered) and an established one
+  // (docked bottom).
   const left = composerRect.left;
-  let top = composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
+  let top = composerRect.top - readout.offsetHeight / 2;
 
-  // If an open file menu would sit on top of that natural position,
-  // drop below the menu instead of behind it — whichever direction the
-  // menu opened (it can flip above/below the composer depending on
-  // available room).
+  // If an open file menu would sit on top of that spot, drop the readout
+  // below the composer instead of leaving it hidden behind the menu.
   const menuRect = getOpenFileMenuRect();
   if (menuRect) {
     const naturalRect = { left, right: left + readout.offsetWidth, top, bottom: top + readout.offsetHeight };
     if (rectsOverlap(menuRect, naturalRect)) {
-      top = menuRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
+      top = composerRect.bottom + BUCKET_GAP_BELOW_COMPOSER;
     }
   }
 
@@ -281,12 +352,36 @@ function positionReadout() {
   readout.style.left = `${left}px`;
 }
 
+// The left/top widgets (fishbowl, "mL used today", "prompts left") only
+// make sense on an actual chat screen. A platform adapter can define
+// isChatPage() to return false on its non-chat routes (Gemini's "Search
+// chats" results and notebooks pages) — the extension's own body-level
+// widgets otherwise linger there after an SPA navigation.
+function onChatPage() {
+  return typeof isChatPage !== "function" || isChatPage();
+}
+
+const LEFT_WIDGET_IDS = ["water-tracker-bucket", "water-readout", "water-usage-tracker"];
+
 let bucketPositionLoopActive = false;
 function bucketPositionLoop() {
   if (!bucketPositionLoopActive) return;
-  positionBucket();
-  positionReadout();
-  positionUsageTracker();
+  if (onChatPage()) {
+    // Undo any off-chat-page hide; positionBucket/positionUsageTracker
+    // re-apply their own sidebar-occlusion visibility right after.
+    for (const id of LEFT_WIDGET_IDS) {
+      const el = document.getElementById(id);
+      if (el) el.style.visibility = "";
+    }
+    positionBucket();
+    positionReadout();
+    positionUsageTracker();
+  } else {
+    for (const id of LEFT_WIDGET_IDS) {
+      const el = document.getElementById(id);
+      if (el) el.style.visibility = "hidden";
+    }
+  }
   requestAnimationFrame(bucketPositionLoop);
 }
 function startBucketPositionLoop() {
@@ -316,11 +411,11 @@ function setUsageStage(stage) {
   }, 200);
 }
 
-// Shared by both digit displays below — the lifetime cap-note and the
-// daily usage tracker each render a plain integer as a row of the
-// teammate's number sprites.
-function renderDigitSprites(container, number, size) {
-  container.innerHTML = "";
+// Shared digit renderer — the usage tracker and the "prompts left"
+// readout both draw integers as a row of the teammate's number sprites
+// (assets/numbers/). The sprites are black on transparent, so `white`
+// flips them to white for use on a dark background (the readout pill).
+function appendDigitSprites(container, number, size, white) {
   String(number)
     .split("")
     .forEach((digit) => {
@@ -328,30 +423,67 @@ function renderDigitSprites(container, number, size) {
       img.src = digitAssetUrl(digit);
       img.width = size;
       img.height = size;
+      img.style.verticalAlign = "middle";
+      if (white) img.style.filter = "brightness(0) invert(1)";
       container.appendChild(img);
     });
 }
 
+function renderDigitSprites(container, number, size, white) {
+  container.innerHTML = "";
+  appendDigitSprites(container, number, size, white);
+}
+
+// "<remaining>/<cap> prompts left today", with the two numbers drawn as
+// white number sprites. The "/" has no sprite so it stays as text (the
+// pill's own white).
+function renderReadout(readout, remaining, cap) {
+  readout.textContent = "";
+  const nums = document.createElement("span");
+  Object.assign(nums.style, { display: "inline-flex", alignItems: "center", gap: "1px", verticalAlign: "middle" });
+  appendDigitSprites(nums, remaining, READOUT_DIGIT_SIZE, true);
+  const slash = document.createElement("span");
+  slash.textContent = "/";
+  slash.style.margin = "0 3px";
+  nums.appendChild(slash);
+  appendDigitSprites(nums, cap, READOUT_DIGIT_SIZE, true);
+  readout.appendChild(nums);
+  const label = document.createElement("span");
+  label.textContent = " prompts left today";
+  label.style.verticalAlign = "middle";
+  readout.appendChild(label);
+}
+
 // ---- Usage tracker (underneath the fishbowl) ----
-// Separate metric from both the daily prompt cap and the lifetime usage
-// fishbowl above, though it shares that fishbowl's "ever, everywhere"
-// nature: a flat mL-per-prompt rate (background.js's ML_PER_PROMPT_USAGE)
-// off totalPromptsSent, universal across chats and days, never resets.
+// "<n> mL used today": a flat mL-per-prompt rate (background.js's
+// ML_PER_PROMPT_USAGE) times today's send count. Resets to zero at
+// midnight, same as the fishbowl above and the daily cap.
 function injectUsageTracker() {
   if (document.getElementById("water-usage-tracker")) return;
   const el = document.createElement("div");
   el.id = "water-usage-tracker";
   el.innerHTML = `
-    <span id="water-usage-tracker-digits" style="display: inline-flex; gap: 1px; vertical-align: middle;"></span>
-    <span style="font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #2a5f8f; vertical-align: middle;">mL used today</span>
+    <span id="water-usage-tracker-digits" style="display: inline-flex; align-items: center; gap: 1px; vertical-align: middle;"></span>
+    <span style="vertical-align: middle;">mL used today</span>
   `;
+  // Same dark-blue pill as the "prompts left" readout (see injectBucket),
+  // at the sass comment box's text size.
   Object.assign(el.style, {
     position: "fixed",
     // top/left set live by positionUsageTracker() — see below
-    zIndex: 50,
+    zIndex: LEFT_WIDGET_Z,
     display: "flex",
     alignItems: "center",
     gap: "4px",
+    boxSizing: "border-box",
+    background: READOUT_BG,
+    color: "#fff",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: `${USAGE_FONT_SIZE}px`,
+    padding: USAGE_PADDING,
+    borderRadius: READOUT_RADIUS,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+    whiteSpace: "nowrap",
   });
   document.body.appendChild(el);
 }
@@ -359,19 +491,29 @@ function injectUsageTracker() {
 function updateUsageTracker(state) {
   injectUsageTracker();
   const digitsEl = document.getElementById("water-usage-tracker-digits");
-  if (digitsEl) renderDigitSprites(digitsEl, state.mlUsed ?? 0, 12);
+  if (digitsEl) renderDigitSprites(digitsEl, state.mlUsed ?? 0, USAGE_DIGIT_SIZE, true);
 }
 
 function positionUsageTracker() {
   const el = document.getElementById("water-usage-tracker");
   const bucket = document.getElementById("water-tracker-bucket");
-  if (!el || !bucket) return;
-  const rect = bucket.getBoundingClientRect();
-  el.style.left = `${rect.left}px`;
-  // Tight gap — the bucket already has its own 8px padding below the
-  // fishbowl art, so much more than a couple px here reads as a big
-  // detached gap between the image and "mL used today" underneath it.
-  el.style.top = `${rect.bottom + 2}px`;
+  const composer = findComposer();
+  if (!el || !bucket || !composer) return;
+  const composerRect = anchorRectFor(composer);
+  if (!composerRect) return;
+  const bucketRect = bucket.getBoundingClientRect();
+
+  // Centered on the fishbowl's own horizontal center (the fishbowl itself
+  // is centered in the sidebar->composer gap).
+  el.style.left = `${bucketRect.left + bucketRect.width / 2 - el.offsetWidth / 2}px`;
+
+  // Same in every chat state: the box's BOTTOM edge lines up with the
+  // prompt box's bottom edge. (Established chats used to compute this off
+  // composerRect.top instead, which put the box up where the fishbowl art
+  // is and made the two overlap.)
+  el.style.top = `${composerRect.bottom - el.offsetHeight}px`;
+
+  applySidebarOcclusion(el);
 }
 
 function updateBucket(state) {
@@ -384,11 +526,13 @@ function updateBucket(state) {
   // Denominator is the configured daily cap alone (baseCap), not
   // state.cap (which includes any earned bonus) — a bonus prompt should
   // still read as "x/10", not inflate the denominator to "x/12".
-  readout.innerHTML = state.capped
-    ? "Play the game to get another prompt!"
-    : `<strong>${state.remaining}</strong>/${state.baseCap ?? state.cap} prompts left today`;
+  if (state.capped) {
+    readout.textContent = "Play the game to get another prompt!";
+  } else {
+    renderReadout(readout, state.remaining, state.baseCap ?? state.cap);
+  }
 
-  setUsageStage(usageStageFor(state.totalPromptsSent));
+  setUsageStage(usageStageFor(state.count));
 
   // A real send clears the composer — re-enter phase 1 for the next
   // prompt rather than hiding, since phase 1 is the resting state now.
@@ -470,53 +614,111 @@ function injectSass() {
   document.body.appendChild(el);
 }
 
-// Vertical offset from composerRect.top, per reaction file — reaction2
-// renders at 220px (see REACTION_IMAGE_SIZE) instead of the 150px
-// default, so anchoring it at the same +8 offset as the others left it
-// hanging noticeably further down past the composer. Shifting it up
-// keeps it reading as anchored near the composer's top edge like the
-// rest. Purely a function of composerRect, so it applies the same way
-// in both new and established chats.
-const REACTION_IMAGE_TOP_OFFSET = {
-  "reaction2.PNG": -60,
-};
-// Overridable per platform (FISH_TOP_OFFSET) for the same reason as
-// BUCKET_GAP_BELOW_COMPOSER above — this is the baseline every entry in
-// REACTION_IMAGE_TOP_OFFSET is relative to.
-const DEFAULT_REACTION_TOP_OFFSET = typeof FISH_TOP_OFFSET !== "undefined" ? FISH_TOP_OFFSET : 8;
+// ---- Right-side speech stack: comment box -> bubbles -> fish ----
+// The comment now reads as something the fish is saying. Everything to
+// the right of the composer is one vertical stack, centered in the gap
+// between the composer's right edge and the screen edge, laid out in a
+// single pass so the pieces never drift apart:
+//
+//   [ orange comment box ]   top; grows taller as a long comment wraps
+//        (bubble2, large)    trailing bubble nearest the comment
+//        (bubble1, small)    trailing bubble nearest the fish
+//     [  fish reaction   ]   bottom, bottom-aligned to the composer
+//
+// Bottom-aligning the fish to the composer (rather than hanging it off
+// composerRect.top like before) is what keeps it fully on screen once an
+// established chat docks the composer to the very bottom of the viewport.
+const BUBBLE_SMALL_FILE = "bubble1.PNG";
+const BUBBLE_LARGE_FILE = "bubble2.PNG";
+const BUBBLE_SMALL_SIZE = 24;
+const BUBBLE_LARGE_SIZE = 30;
+const BUBBLE_LARGE_X_NUDGE = 12; // large bubble sits slightly right of the small one / fish
+const STACK_ITEM_GAP = 8; // vertical gap between stacked items
+const STACK_EDGE_MARGIN = 20; // keep the stack this far off the composer / screen edges
+const SASS_MAX_WIDTH = 420; // the comment box never grows wider than this
 
-function positionFish(composerRect) {
-  const el = document.getElementById("water-fish");
-  if (!el || !composerRect) return;
-  // Centered in the leftover horizontal space to the right of the
-  // composer, not just offset from its edge.
-  const gapCenter = (composerRect.right + window.innerWidth) / 2;
-  const fishWidth = el.offsetWidth || 36;
-  el.style.left = `${gapCenter - fishWidth / 2}px`;
-  const file = REACTION_PHASE_IMAGE_FILES[lastReactionPhase] ?? REACTION_PHASE_IMAGE_FILES[0];
-  const topOffset = REACTION_IMAGE_TOP_OFFSET[file] ?? DEFAULT_REACTION_TOP_OFFSET;
-  el.style.top = `${composerRect.top + topOffset}px`;
+function injectBubbles() {
+  for (const [id, file, size] of [
+    ["water-bubble-small", BUBBLE_SMALL_FILE, BUBBLE_SMALL_SIZE],
+    ["water-bubble-large", BUBBLE_LARGE_FILE, BUBBLE_LARGE_SIZE],
+  ]) {
+    if (document.getElementById(id)) continue;
+    const el = document.createElement("img");
+    el.id = id;
+    el.alt = "";
+    el.src = reactionAssetUrl(file);
+    Object.assign(el.style, {
+      position: "fixed",
+      zIndex: 50,
+      width: `${size}px`,
+      height: `${size}px`,
+      objectFit: "contain",
+      display: "none",
+      pointerEvents: "none",
+    });
+    document.body.appendChild(el);
+  }
 }
 
-function positionSass(composerRect) {
-  const el = document.getElementById("water-sass");
-  if (!el || !composerRect) return;
-  el.style.left = `${composerRect.left}px`;
-  // Straddles the box's top edge — half outside, half inside — rather than
-  // floating fully above it. Since composerRect.top is recomputed live off
-  // the stable anchor every frame (see positionLoop), this alone also
-  // covers the box shrinking back to its default height when a big prompt
-  // gets deleted: the comment rides the top edge down with it, no separate
-  // handling needed for that case.
-  el.style.top = `${composerRect.top - el.offsetHeight / 2}px`;
+function setSpeechBubblesVisible(visible) {
+  for (const id of ["water-bubble-small", "water-bubble-large"]) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? "block" : "none";
+  }
+}
 
-  // Unlike the readout, there's no good spot to relocate the comment to
-  // once a file menu is covering the composer's top edge — hide it
-  // instead. visibility (not display) so this stays independent of
-  // updatePhaseUI()'s own display:block/none, which tracks whether
-  // there's a comment to show at all, not this menu-conflict case.
-  const menuRect = getOpenFileMenuRect();
-  el.style.visibility = menuRect && rectsOverlap(menuRect, el.getBoundingClientRect()) ? "hidden" : "";
+function positionSpeechStack(composerRect) {
+  const fish = document.getElementById("water-fish");
+  if (!fish || !composerRect) return;
+  const sass = document.getElementById("water-sass");
+  const bubbleSmall = document.getElementById("water-bubble-small");
+  const bubbleLarge = document.getElementById("water-bubble-large");
+
+  // Centered in the gap to the right of the composer — same horizontal
+  // placement the fish alone used to have.
+  const gapLeft = composerRect.right;
+  const gapRight = window.innerWidth;
+  const centerX = (gapLeft + gapRight) / 2;
+
+  // Let the comment box fill the middle space rather than stay a fixed
+  // one-liner: a long comment just wraps and makes the orange box taller.
+  if (sass) {
+    const fitted = gapRight - gapLeft - STACK_EDGE_MARGIN * 2;
+    sass.style.maxWidth = `${Math.min(SASS_MAX_WIDTH, Math.max(140, fitted))}px`;
+  }
+
+  // Walk upward from the composer's bottom edge. `cursor` is always the y
+  // of the bottom edge of the next item to place.
+  let cursor = composerRect.bottom;
+
+  const fishH = fish.getBoundingClientRect().height || DEFAULT_REACTION_SIZE;
+  const fishW = fish.offsetWidth || DEFAULT_REACTION_SIZE;
+  fish.style.left = `${centerX - fishW / 2}px`;
+  fish.style.top = `${cursor - fishH}px`;
+  cursor -= fishH + STACK_ITEM_GAP;
+
+  if (bubbleSmall) {
+    bubbleSmall.style.left = `${centerX - BUBBLE_SMALL_SIZE / 2}px`;
+    bubbleSmall.style.top = `${cursor - BUBBLE_SMALL_SIZE}px`;
+    cursor -= BUBBLE_SMALL_SIZE + STACK_ITEM_GAP;
+  }
+  if (bubbleLarge) {
+    bubbleLarge.style.left = `${centerX - BUBBLE_LARGE_SIZE / 2 + BUBBLE_LARGE_X_NUDGE}px`;
+    bubbleLarge.style.top = `${cursor - BUBBLE_LARGE_SIZE}px`;
+    cursor -= BUBBLE_LARGE_SIZE + STACK_ITEM_GAP;
+  }
+  if (sass) {
+    const rect = sass.getBoundingClientRect();
+    sass.style.left = `${centerX - rect.width / 2}px`;
+    sass.style.top = `${cursor - rect.height}px`;
+
+    // Same file-menu dodge as before: if the "+" attach menu opens over
+    // the comment, hide it rather than let them overlap. visibility (not
+    // display) so it stays independent of updatePhaseUI()'s show/hide.
+    const menuRect = getOpenFileMenuRect();
+    sass.style.visibility =
+      menuRect && rectsOverlap(menuRect, sass.getBoundingClientRect()) ? "hidden" : "";
+  }
 }
 
 // The composer's own contenteditable node grows unbounded and sits inside
@@ -562,10 +764,7 @@ function positionLoop() {
   if (!positionLoopActive) return;
   const composer = findComposer();
   const rect = anchorRectFor(composer);
-  if (rect) {
-    positionFish(rect);
-    positionSass(rect);
-  }
+  if (rect) positionSpeechStack(rect);
   requestAnimationFrame(positionLoop);
 }
 function startPositionLoop() {
@@ -589,11 +788,13 @@ function hidePhaseUI() {
   const sass = document.getElementById("water-sass");
   if (fish) fish.style.display = "none";
   if (sass) sass.style.display = "none";
+  setSpeechBubblesVisible(false);
 }
 
 function updatePhaseUI(len, composer) {
   injectFish();
   injectSass();
+  injectBubbles();
 
   if (!composer) {
     hidePhaseUI();
@@ -621,9 +822,9 @@ function updatePhaseUI(len, composer) {
     sass.style.fontSize = composer ? window.getComputedStyle(composer).fontSize : "16px";
     sass.style.display = "block";
   }
+  setSpeechBubblesVisible(!!lastComment);
   const rect = anchorRectFor(composer);
-  positionFish(rect);
-  positionSass(rect);
+  positionSpeechStack(rect);
   startPositionLoop();
 }
 
@@ -668,11 +869,15 @@ function teardownAll() {
   const usageTracker = document.getElementById("water-usage-tracker");
   const fish = document.getElementById("water-fish");
   const sass = document.getElementById("water-sass");
+  const bubbleSmall = document.getElementById("water-bubble-small");
+  const bubbleLarge = document.getElementById("water-bubble-large");
   if (bucket) bucket.remove();
   if (readout) readout.remove();
   if (usageTracker) usageTracker.remove();
   if (fish) fish.remove();
   if (sass) sass.remove();
+  if (bubbleSmall) bubbleSmall.remove();
+  if (bubbleLarge) bubbleLarge.remove();
 }
 
 chrome.storage.sync.get("enabled", ({ enabled }) => {
@@ -688,6 +893,24 @@ chrome.storage.onChanged.addListener((changes, area) => {
     else teardownAll();
   }
 });
+
+// Long-open tabs: background.js already computes state fresh per day
+// (getTodayEntry is keyed by date), but a tab left open across midnight
+// keeps showing yesterday's numbers until the next send or storage
+// change. Re-pull state when the local date rolls over so the daily cap,
+// the usage fishbowl and "mL used today" all visibly reset at midnight.
+function localDateStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+let lastDateStamp = localDateStamp();
+setInterval(() => {
+  if (!extensionEnabled) return;
+  const now = localDateStamp();
+  if (now === lastDateStamp) return;
+  lastDateStamp = now;
+  requestState();
+}, 30000);
 
 // ---- Detection ----
 //
@@ -800,28 +1023,6 @@ document.addEventListener("click", (e) => {
   if (!extensionEnabled) return;
   if (!e.target.closest(CONFIG.sendButtonSelector)) return;
   recordPromptIfNotDuped();
-});
-
-// A large paste/attachment renders as a chip with its own "Remove" (X)
-// button near its top-left corner — verified live via
-// button[aria-label="Remove"] — which the sass comment (also anchored
-// near the composer's top-left, see positionSass) can end up covering
-// since both want the same corner. Rather than hunt down and hardcode
-// that button's exact selector, just drop the sass comment's z-index
-// below normal page content while hovering any attachment chip, so
-// whatever claude.ai renders there — Remove button or otherwise — wins.
-document.addEventListener("mouseover", (e) => {
-  if (!e.target.closest(ATTACHMENT_SELECTOR)) return;
-  const sass = document.getElementById("water-sass");
-  if (sass) sass.style.zIndex = "1";
-});
-
-document.addEventListener("mouseout", (e) => {
-  const chip = e.target.closest(ATTACHMENT_SELECTOR);
-  if (!chip) return;
-  if (chip.contains(e.relatedTarget)) return; // moved within the same chip, not away from it
-  const sass = document.getElementById("water-sass");
-  if (sass) sass.style.zIndex = "50";
 });
 
 // Catch-all for content changes that don't fire a native `input` event —

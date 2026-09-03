@@ -649,9 +649,6 @@ const SASS_MAX_WIDTH = 420; // the comment box never grows wider than this
 // moment the user types) shoves the whole stack upward. Reserve the
 // largest reaction size so the biggest fish still clears the bubbles.
 const SPEECH_FISH_SLOT = Math.max(DEFAULT_REACTION_SIZE, ...Object.values(REACTION_IMAGE_SIZE));
-// The comment box is top-anchored inside a fixed reserve and grows
-// DOWNWARD for long text, so its top edge stays put as the user types.
-const SPEECH_COMMENT_SLOT = 40;
 
 function injectBubbles() {
   for (const [id, file, size] of [
@@ -727,9 +724,13 @@ function positionSpeechStack(composerRect) {
     cursor -= BUBBLE_LARGE_SIZE + STACK_ITEM_GAP;
   }
   if (sass) {
-    // Top-anchored inside SPEECH_COMMENT_SLOT: fixed top edge, grows down.
-    sass.style.left = `${centerX - sass.getBoundingClientRect().width / 2}px`;
-    sass.style.top = `${cursor - SPEECH_COMMENT_SLOT}px`;
+    // Bottom-anchored a fixed STACK_ITEM_GAP above the large bubble, so
+    // it can never overlap it. The bubbles + fish slot are fixed, so a
+    // longer comment only grows this box upward into empty space rather
+    // than shoving the stack around.
+    const rect = sass.getBoundingClientRect();
+    sass.style.left = `${centerX - rect.width / 2}px`;
+    sass.style.top = `${cursor - rect.height}px`;
 
     // Same file-menu dodge as before: if the "+" attach menu opens over
     // the comment, hide it rather than let them overlap. visibility (not

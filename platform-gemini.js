@@ -98,3 +98,16 @@ const SASS_PADDING = "4px 14px";
 // (722px column vs 660px composer, both centered the same). Negative
 // inset widens instead of narrows, by exactly that measured amount.
 const GLASS_WIDTH_INSET_PX = -32;
+
+// Gemini's "Search chats" results view and its notebooks pages aren't a
+// chat — no Gemini composer is rendered — so the left/top trackers
+// shouldn't show there. content.js's bucketPositionLoop calls this and
+// hides them when it's false. The explicit path guard is belt-and-braces
+// for any such route that still mounts a composer; add routes as found.
+function isChatPage() {
+  if (/\/(search|notebook)/i.test(location.pathname)) return false;
+  const composer = document.querySelector(CONFIG.composerSelector);
+  if (!composer) return false;
+  const rect = composer.getBoundingClientRect();
+  return composer.offsetParent !== null && rect.width > 0 && rect.height > 0;
+}
